@@ -4,16 +4,29 @@ from threading import Thread
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
+from visualization_msgs.msg import Marker
 
 from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.robots import tiagopro as robot
-
+from time import sleep
 
 def main():
     rclpy.init()
 
     # Create node for this example
     node = Node("tiago_pose_goal")
+    reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
+    debug_marker = Marker()
+    debug_marker.header.frame_id = robot.base_link_name()
+    debug_marker.ns = 'spheres'
+    debug_marker.type = Marker.SPHERE
+    debug_marker.action = Marker.ADD
+    debug_marker.pose.orientation.w = 1.0
+    debug_marker.scale.x = 0.05
+    debug_marker.scale.y = 0.05
+    debug_marker.scale.z = 0.05
+    debug_marker.color.a = 1.0  # Fully opaque
+    # debug_marker.lifetime = rclpy.Duration(0).nanoseconds()
 
     # Create callback group that allows execution of callbacks in parallel without restrictions
     callback_group = ReentrantCallbackGroup()
@@ -41,23 +54,43 @@ def main():
     moveit2.max_acceleration = 0.5
 
     # Get parameters
-    position_1 = [0.8, 0.3, 0.25]
-    position_2 = [0.3, -0.4, 0.75]
+    position_ref = [0.65, 0.2, 0.95]
+    sampling_box = [0.3, 0.4, 0.6]
+    subdivide = 4
 
     quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
-    for i in range(8):
-        position = [ position_1[j] if (i&(1<<j) != 0) else position_2[j] for j in range(3)]
-        plan = moveit2.plan(position= position, quat_xyzw = quat_xyzw)
+    for i in range(subdivide**3):
+        current_position = [0, 0, 0,]
+        substeps = []
+        for j in range(3):
+            substep = (i // (subdivide**j)) % subdivide
+            pos_offset = 2.0 * sampling_box[j] * substep / subdivide - sampling_box[j]
+            current_position[j] = position_ref[j] + pos_offset
+            substeps.append(substep)
+        print(substeps)
+        plan = moveit2.plan(position= current_position, quat_xyzw = quat_xyzw)
 
         success = (plan is not None)
 
+        # Diplay marker in RViz
+        debug_marker.header.stamp = node.get_clock().now().to_msg()
+        debug_marker.id = i
+        debug_marker.pose.position.x = current_position[0]
+        debug_marker.pose.position.y = current_position[1]
+        debug_marker.pose.position.z = current_position[2]
+        debug_marker.color.r = 1.0 if not success else 0.0
+        debug_marker.color.g = 1.0 if success else 0.0
+        debug_marker.color.b = 0.0
+        reachability_publisher.publish(debug_marker)
+        sleep(0.1)
+
         if not success:
-            print(f"{position=} not reachable !")
+            print(f"{current_position=} not reachable !")
             continue
 
-        # moveit2.execute(plan)
-        # input("Press enter to continue...")
+        moveit2.execute(plan)
+        moveit2.wait_until_executed()
 
     # moveit2.move_to_pose(
     #     position=[0.5, 0.0, 0.5],
