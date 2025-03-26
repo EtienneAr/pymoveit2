@@ -41,22 +41,33 @@ def main():
     moveit2.max_acceleration = 0.5
 
     # Get parameters
-    position = [0.5, 0.0, 0.25]
-    quat_xyzw = [1.0, 0.0, 0.0, 0.0]
+    position_1 = [0.8, 0.3, 0.25]
+    position_2 = [0.3, -0.4, 0.75]
 
-    # Move to pose
-    node.get_logger().info(
-        f"Moving to {{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}}}"
-    )
-    moveit2.move_to_pose(
-        position=position,
-        quat_xyzw=quat_xyzw,
-        cartesian=False
-    )
+    quat_xyzw = [0.0, 0.707, 0.0, 0.707]
+
+    for i in range(8):
+        position = [ position_1[j] if (i&(1<<j) != 0) else position_2[j] for j in range(3)]
+        plan = moveit2.plan(position= position, quat_xyzw = quat_xyzw)
+
+        success = (plan is not None)
+
+        if not success:
+            print(f"{position=} not reachable !")
+            continue
+
+        # moveit2.execute(plan)
+        # input("Press enter to continue...")
+
+    # moveit2.move_to_pose(
+    #     position=[0.5, 0.0, 0.5],
+    #     quat_xyzw=quat_xyzw,
+    #     cartesian=False
+    # )
 
     # Note: the same functionality can be achieved by setting
     # `synchronous:=false` and `cancel_after_secs` to a negative value.
-    moveit2.wait_until_executed()
+    # moveit2.wait_until_executed()
 
     rclpy.shutdown()
     executor_thread.join()
