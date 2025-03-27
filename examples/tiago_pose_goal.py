@@ -8,8 +8,11 @@ from visualization_msgs.msg import Marker
 
 from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.robots import tiagopro as robot
-from typing import Tuple, Union
+from typing import Any, Tuple, Union, Optional
+import os
 from time import sleep
+from datetime import datetime
+import pickle
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
@@ -46,6 +49,22 @@ class PointGrid:
             index += indexes[j] * self.divisors[j]
         return self.get(index)
 
+class MeasuresLogger:
+    def __init__(self, path: Optional[str] = "."):
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dirpath = os.path.expanduser(os.path.join(path, timestamp))
+        self.dirpath = dirpath
+        os.makedirs(self.dirpath)
+
+    def set_meas_id(self, id: Union[int, str]):
+        self.meas_id = id
+
+    def save(self, measure_type: str, obj: Any):
+        filename = f"{self.meas_id}_{measure_type}.pkl"
+        filepath = os.path.join(self.dirpath, filename)
+
+        with open(filepath, "wb") as f:
+            pickle.dump(obj, f)
 
 def main():
     rclpy.init()
@@ -108,9 +127,11 @@ def main():
     subdivide = [4, 4, 4]
 
     grid = PointGrid(position_ref, sampling_box, subdivide)
+    logger = MeasuresLogger("~/exchange/measures")
 
     quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
+    meas_nb = 0
     for i, position in enumerate(grid.points):
         plan = moveit2.plan(position= position, quat_xyzw = quat_xyzw)
 
@@ -132,8 +153,16 @@ def main():
             print(f"{position=} not reachable !")
             continue
 
-        moveit2.execute(plan)
-        moveit2.wait_until_executed()
+        # Log only if successful
+        logger.set_meas_id(meas_nb)
+        meas_nb +=1
+
+        logger.save("target_index", i)
+        logger.save("target_position", position)
+        logger.save("target_orientation", quat_xyzw)
+
+        # moveit2.execute(plan)
+        # moveit2.wait_until_executed()
 
     # moveit2.move_to_pose(
     #     position=[0.5, 0.0, 0.5],
