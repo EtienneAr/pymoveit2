@@ -103,8 +103,8 @@ def main():
 
 
     # Get parameters
-    position_ref = [0.65, 0.2, 0.95]
-    sampling_box = [0.3, 0.4, 0.6]
+    position_ref = [0.7, 0.2, 0.95]
+    sampling_box = [0.4, 0.4, 0.6]
     subdivide = [4, 4, 4]
 
     grid = PointGrid(position_ref, sampling_box, subdivide)
