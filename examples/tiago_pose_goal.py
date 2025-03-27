@@ -15,18 +15,20 @@ def main():
 
     # Create node for this example
     node = Node("tiago_pose_goal")
+
+    # Debugging markers
     reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
-    debug_marker = Marker()
-    debug_marker.header.frame_id = robot.base_link_name()
-    debug_marker.ns = 'spheres'
-    debug_marker.type = Marker.SPHERE
-    debug_marker.action = Marker.ADD
-    debug_marker.pose.orientation.w = 1.0
-    debug_marker.scale.x = 0.05
-    debug_marker.scale.y = 0.05
-    debug_marker.scale.z = 0.05
-    debug_marker.color.a = 1.0  # Fully opaque
-    # debug_marker.lifetime = rclpy.Duration(0).nanoseconds()
+    reachability_marker = Marker()
+    reachability_marker.header.frame_id = robot.base_link_name()
+    reachability_marker.ns = 'spheres'
+    reachability_marker.type = Marker.SPHERE
+    reachability_marker.action = Marker.ADD
+    reachability_marker.pose.orientation.w = 1.0
+    reachability_marker.scale.x = 0.05
+    reachability_marker.scale.y = 0.05
+    reachability_marker.scale.z = 0.05
+    reachability_marker.color.a = 1.0  # Fully opaque
+    reachability_marker.lifetime = rclpy.duration.Duration(seconds=0.0).to_msg()
 
     # Create callback group that allows execution of callbacks in parallel without restrictions
     callback_group = ReentrantCallbackGroup()
@@ -74,15 +76,15 @@ def main():
         success = (plan is not None)
 
         # Diplay marker in RViz
-        debug_marker.header.stamp = node.get_clock().now().to_msg()
-        debug_marker.id = i
-        debug_marker.pose.position.x = current_position[0]
-        debug_marker.pose.position.y = current_position[1]
-        debug_marker.pose.position.z = current_position[2]
-        debug_marker.color.r = 1.0 if not success else 0.0
-        debug_marker.color.g = 1.0 if success else 0.0
-        debug_marker.color.b = 0.0
-        reachability_publisher.publish(debug_marker)
+        reachability_marker.header.stamp = node.get_clock().now().to_msg()
+        reachability_marker.id = i
+        reachability_marker.pose.position.x = current_position[0]
+        reachability_marker.pose.position.y = current_position[1]
+        reachability_marker.pose.position.z = current_position[2]
+        reachability_marker.color.r = 1.0 if not success else 0.0
+        reachability_marker.color.g = 1.0 if success else 0.0
+        reachability_marker.color.b = 0.0
+        reachability_publisher.publish(reachability_marker)
         sleep(0.1)
 
         if not success:
