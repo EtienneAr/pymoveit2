@@ -8,7 +8,44 @@ from visualization_msgs.msg import Marker
 
 from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.robots import tiagopro as robot
+from typing import Tuple, Union
 from time import sleep
+
+class PointGrid:
+    def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
+        self.center = center
+        self.volume = volume
+        self.subdivisions = subdivisions
+        self._populate_points()
+
+    def _populate_points(self):
+        n_points = 1
+        divisors = []
+        for div in self.subdivisions:
+            divisors.append(n_points)
+            n_points *= div
+        self.n_points = n_points
+        self.divisors = divisors
+
+        self.points = []
+        for i in range(self.n_points):
+            position = [0, 0, 0,]
+            for j in range(3):
+                substep = (i // self.divisors[j]) % self.subdivisions[j]
+                pos_offset = self.volume[j] * (2.0 * substep / self.subdivisions[j] - 1.0)
+                position[j] = self.center[j] + pos_offset
+            self.points.append(position)
+
+    def get(self, i: int):
+        return self.points[i]
+
+    def get(self, indexes: Tuple[int, int, int]):
+        index = 0
+        for j in range(3):
+            assert(indexes[j] < self.subdivisions[j])
+            index += indexes[j] * self.divisors[j]
+        return self.get(index)
+
 
 def main():
     rclpy.init()
@@ -68,29 +105,23 @@ def main():
     # Get parameters
     position_ref = [0.65, 0.2, 0.95]
     sampling_box = [0.3, 0.4, 0.6]
-    subdivide = 4
+    subdivide = [4, 4, 4]
+
+    grid = PointGrid(position_ref, sampling_box, subdivide)
 
     quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
-    for i in range(subdivide**3):
-        current_position = [0, 0, 0,]
-        substeps = []
-        for j in range(3):
-            substep = (i // (subdivide**j)) % subdivide
-            pos_offset = 2.0 * sampling_box[j] * substep / subdivide - sampling_box[j]
-            current_position[j] = position_ref[j] + pos_offset
-            substeps.append(substep)
-        print(substeps)
-        plan = moveit2.plan(position= current_position, quat_xyzw = quat_xyzw)
+    for i, position in enumerate(grid.points):
+        plan = moveit2.plan(position= position, quat_xyzw = quat_xyzw)
 
         success = (plan is not None)
 
         # Diplay marker in RViz
         reachability_marker.header.stamp = node.get_clock().now().to_msg()
         reachability_marker.id = i
-        reachability_marker.pose.position.x = current_position[0]
-        reachability_marker.pose.position.y = current_position[1]
-        reachability_marker.pose.position.z = current_position[2]
+        reachability_marker.pose.position.x = position[0]
+        reachability_marker.pose.position.y = position[1]
+        reachability_marker.pose.position.z = position[2]
         reachability_marker.color.r = 1.0 if not success else 0.0
         reachability_marker.color.g = 1.0 if success else 0.0
         reachability_marker.color.b = 0.0
@@ -98,7 +129,7 @@ def main():
         sleep(0.1)
 
         if not success:
-            print(f"{current_position=} not reachable !")
+            print(f"{position=} not reachable !")
             continue
 
         moveit2.execute(plan)
