@@ -55,6 +55,16 @@ def main():
     moveit2.max_velocity = 0.5
     moveit2.max_acceleration = 0.5
 
+    # Add collision objects
+    moveit2.add_collision_cylinder("mocap_markers",
+        0.07, #height
+        0.03, # radius
+        position = [0.035,0.,0.],
+        quat_xyzw = [0.0, 0.707, 0.0, 0.707],
+        frame_id = "arm_left_tool_link")
+    moveit2.attach_collision_object("mocap_markers", "arm_left_tool_link", ["gripper_left_base_link", "arm_left_7_link", "arm_left_6_link"])
+
+
     # Get parameters
     position_ref = [0.65, 0.2, 0.95]
     sampling_box = [0.3, 0.4, 0.6]
