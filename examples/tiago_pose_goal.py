@@ -13,6 +13,7 @@ import os
 from time import sleep
 from datetime import datetime
 import pickle
+import tf2_ros
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
@@ -55,16 +56,19 @@ class MeasuresLogger:
         dirpath = os.path.expanduser(os.path.join(path, timestamp))
         self.dirpath = dirpath
         os.makedirs(self.dirpath)
+        self.clear()
 
-    def set_meas_id(self, id: Union[int, str]):
-        self.meas_id = id
+    def clear(self):
+        self._buffer = {}
 
-    def save(self, measure_type: str, obj: Any):
-        filename = f"{self.meas_id}_{measure_type}.pkl"
-        filepath = os.path.join(self.dirpath, filename)
+    def add_meas(self, measure_name: Union[int, str], obj: Any):
+        self._buffer.update({measure_name: obj})
 
+    def save(self, measure_id: str):
+        filepath = os.path.join(self.dirpath, f"{measure_id}.pkl")
         with open(filepath, "wb") as f:
-            pickle.dump(obj, f)
+            pickle.dump(self._buffer, f)
+        self.clear()
 
 def main():
     rclpy.init()
@@ -120,6 +124,9 @@ def main():
         frame_id = "arm_left_tool_link")
     moveit2.attach_collision_object("mocap_markers", "arm_left_tool_link", ["gripper_left_base_link", "arm_left_7_link", "arm_left_6_link"])
 
+    # Tf setup
+    tf_buffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(tf_buffer, node)
 
     # Get parameters
     position_ref = [0.7, 0.2, 0.95]
@@ -154,13 +161,21 @@ def main():
             continue
 
         # Log only if successful
-        logger.set_meas_id(meas_nb)
+        logger.clear()
+
+        logger.add_meas("target_index", i)
+        logger.add_meas("target_position", position)
+        logger.add_meas("target_orientation", quat_xyzw)
+
+        transform_msg = tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
+        tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
+        tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
+
+        logger.add_meas("tf_position", tf_position)
+        logger.add_meas("tf_orientation", tf_orientation)
+
+        logger.save(meas_nb)
         meas_nb +=1
-
-        logger.save("target_index", i)
-        logger.save("target_position", position)
-        logger.save("target_orientation", quat_xyzw)
-
         # moveit2.execute(plan)
         # moveit2.wait_until_executed()
 
