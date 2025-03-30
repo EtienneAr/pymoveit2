@@ -179,9 +179,11 @@ def main():
         transform_msg = tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
         tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
         tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
+        joint_states = moveit2.joint_state
 
         logger.add_meas("tf_position", tf_position)
         logger.add_meas("tf_orientation", tf_orientation)
+        logger.add_meas("joint_states", joint_states)
 
         logger.save(meas_nb)
         meas_nb +=1
