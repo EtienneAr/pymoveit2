@@ -161,6 +161,14 @@ def main():
             print(f"{position=} not reachable !")
             continue
 
+        # Move to pose
+        moveit2.execute(plan)
+        success = moveit2.wait_until_executed()
+
+        if not success:
+            print(f"{position=} execution failed !")
+            continue
+
         # Log only if successful
         logger.clear()
 
@@ -177,14 +185,6 @@ def main():
 
         logger.save(meas_nb)
         meas_nb +=1
-        # moveit2.execute(plan)
-        # moveit2.wait_until_executed()
-
-    # moveit2.move_to_pose(
-    #     position=[0.5, 0.0, 0.5],
-    #     quat_xyzw=quat_xyzw,
-    #     cartesian=False
-    # )
 
     # Note: the same functionality can be achieved by setting
     # `synchronous:=false` and `cancel_after_secs` to a negative value.
