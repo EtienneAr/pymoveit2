@@ -114,6 +114,7 @@ def main():
     # Scale down velocity and acceleration of joints (percentage of maximum)
     moveit2.max_velocity = 0.5
     moveit2.max_acceleration = 0.5
+    moveit2.allowed_planning_time = 2.0
 
     # Add collision objects
     moveit2.add_collision_cylinder("mocap_markers",
