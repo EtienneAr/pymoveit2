@@ -84,39 +84,127 @@ class MeasuresLogger:
             pickle.dump(self._buffer, f)
         self.clear()
 
+class Experiment:
+    def __init__(self, node, callback_group):
+        self.node = node
+
+        # Debugging markers
+        self.reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
+        self.reachability_marker = Marker()
+        self.reachability_marker.header.frame_id = robot.base_link_name()
+        self.reachability_marker.ns = 'spheres'
+        self.reachability_marker.type = Marker.SPHERE
+        self.reachability_marker.action = Marker.ADD
+        self.reachability_marker.pose.orientation.w = 1.0
+        self.reachability_marker.scale.x = 0.05
+        self.reachability_marker.scale.y = 0.05
+        self.reachability_marker.scale.z = 0.05
+        self.reachability_marker.color.a = 1.0  # Fully opaque
+        self.reachability_marker.lifetime = rclpy.duration.Duration(seconds=0.0).to_msg()
+
+        # Create MoveIt 2 interface
+        self.moveit2 = MoveIt2(
+            node=self.node,
+            joint_names=robot.joint_names(),
+            base_link_name=robot.base_link_name(),
+            end_effector_name=robot.end_effector_name(),
+            group_name=robot.MOVE_GROUP_ARM,
+            callback_group=callback_group,
+        )
+        self.moveit2.planner_id = "RRTConnectkConfigDefault"
+
+        # Scale down velocity and acceleration of joints (percentage of maximum)
+        self.moveit2.max_velocity = 0.5
+        self.moveit2.max_acceleration = 0.5
+        self.moveit2.allowed_planning_time = 2.0
+
+        # Add collision objects
+        self.moveit2.add_collision_cylinder("mocap_markers",
+            0.07, #height
+            0.03, # radius
+            position = [0.035,0.,0.],
+            quat_xyzw = [0.0, 0.707, 0.0, 0.707],
+            frame_id = "arm_left_tool_link")
+        self.moveit2.attach_collision_object("mocap_markers", "arm_left_tool_link", ["gripper_left_base_link", "arm_left_7_link", "arm_left_6_link"])
+
+        # Tf setup
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
+
+    def run(self):
+        # Get parameters
+        position_ref = [0.7, 0.2, 0.95]
+        sampling_box = [0.4, 0.4, 0.6]
+        subdivide = [4, 4, 4]
+
+        grid = PointGrid(position_ref, sampling_box, subdivide)
+        logger = MeasuresLogger("~/exchange/measures")
+
+        logger.add_metadata("joint_names", self.moveit2.joint_state.name)
+
+        quat_xyzw = [0.0, 0.707, 0.0, 0.707]
+
+        meas_nb = 0
+        for i, position in enumerate(grid.points):
+            plan = self.moveit2.plan(position= position, quat_xyzw = quat_xyzw)
+
+            success = (plan is not None)
+
+            # Diplay marker in RViz
+            self.reachability_marker.header.stamp = self.node.get_clock().now().to_msg()
+            self.reachability_marker.id = i
+            self.reachability_marker.pose.position.x = position[0]
+            self.reachability_marker.pose.position.y = position[1]
+            self.reachability_marker.pose.position.z = position[2]
+            self.reachability_marker.color.r = 1.0 if not success else 0.0
+            self.reachability_marker.color.g = 1.0 if success else 0.0
+            self.reachability_marker.color.b = 0.0
+            self.reachability_publisher.publish(self.reachability_marker)
+            sleep(0.1)
+
+            if not success:
+                print(f"{position=} not reachable !")
+                continue
+
+            # Move to pose
+            self.moveit2.execute(plan)
+            success = self.moveit2.wait_until_executed()
+
+            if not success:
+                print(f"{position=} execution failed !")
+                continue
+
+            # Log only if successful
+            logger.clear()
+
+            logger.add_meas("target_index", i)
+            logger.add_meas("target_position", position)
+            logger.add_meas("target_orientation", quat_xyzw)
+
+            transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
+            tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
+            tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
+            joint_states = self.moveit2.joint_state
+
+            logger.add_meas("tf_position", tf_position)
+            logger.add_meas("tf_orientation", tf_orientation)
+            logger.add_meas("joint_position", joint_states.position.tolist())
+            logger.add_meas("joint_velocity", joint_states.velocity.tolist())
+            logger.add_meas("joint_effort", joint_states.effort.tolist())
+
+            logger.save(meas_nb)
+            meas_nb +=1
+
 def main():
     rclpy.init()
 
     # Create node for this example
     node = Node("tiago_pose_goal")
 
-    # Debugging markers
-    reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
-    reachability_marker = Marker()
-    reachability_marker.header.frame_id = robot.base_link_name()
-    reachability_marker.ns = 'spheres'
-    reachability_marker.type = Marker.SPHERE
-    reachability_marker.action = Marker.ADD
-    reachability_marker.pose.orientation.w = 1.0
-    reachability_marker.scale.x = 0.05
-    reachability_marker.scale.y = 0.05
-    reachability_marker.scale.z = 0.05
-    reachability_marker.color.a = 1.0  # Fully opaque
-    reachability_marker.lifetime = rclpy.duration.Duration(seconds=0.0).to_msg()
-
     # Create callback group that allows execution of callbacks in parallel without restrictions
     callback_group = ReentrantCallbackGroup()
 
-    # Create MoveIt 2 interface
-    moveit2 = MoveIt2(
-        node=node,
-        joint_names=robot.joint_names(),
-        base_link_name=robot.base_link_name(),
-        end_effector_name=robot.end_effector_name(),
-        group_name=robot.MOVE_GROUP_ARM,
-        callback_group=callback_group,
-    )
-    moveit2.planner_id = "RRTConnectkConfigDefault"
+    experiment =  Experiment(node, callback_group)
 
     # Spin the node in background thread(s) and wait a bit for initialization
     executor = rclpy.executors.MultiThreadedExecutor(2)
@@ -125,90 +213,7 @@ def main():
     executor_thread.start()
     node.create_rate(1.0).sleep()
 
-    # Scale down velocity and acceleration of joints (percentage of maximum)
-    moveit2.max_velocity = 0.5
-    moveit2.max_acceleration = 0.5
-    moveit2.allowed_planning_time = 2.0
-
-    # Add collision objects
-    moveit2.add_collision_cylinder("mocap_markers",
-        0.07, #height
-        0.03, # radius
-        position = [0.035,0.,0.],
-        quat_xyzw = [0.0, 0.707, 0.0, 0.707],
-        frame_id = "arm_left_tool_link")
-    moveit2.attach_collision_object("mocap_markers", "arm_left_tool_link", ["gripper_left_base_link", "arm_left_7_link", "arm_left_6_link"])
-
-    # Tf setup
-    tf_buffer = tf2_ros.Buffer()
-    listener = tf2_ros.TransformListener(tf_buffer, node)
-
-    # Get parameters
-    position_ref = [0.7, 0.2, 0.95]
-    sampling_box = [0.4, 0.4, 0.6]
-    subdivide = [4, 4, 4]
-
-    grid = PointGrid(position_ref, sampling_box, subdivide)
-    logger = MeasuresLogger("~/exchange/measures")
-
-    logger.add_metadata("joint_names", moveit2.joint_state.name)
-
-    quat_xyzw = [0.0, 0.707, 0.0, 0.707]
-
-    meas_nb = 0
-    for i, position in enumerate(grid.points):
-        plan = moveit2.plan(position= position, quat_xyzw = quat_xyzw)
-
-        success = (plan is not None)
-
-        # Diplay marker in RViz
-        reachability_marker.header.stamp = node.get_clock().now().to_msg()
-        reachability_marker.id = i
-        reachability_marker.pose.position.x = position[0]
-        reachability_marker.pose.position.y = position[1]
-        reachability_marker.pose.position.z = position[2]
-        reachability_marker.color.r = 1.0 if not success else 0.0
-        reachability_marker.color.g = 1.0 if success else 0.0
-        reachability_marker.color.b = 0.0
-        reachability_publisher.publish(reachability_marker)
-        sleep(0.1)
-
-        if not success:
-            print(f"{position=} not reachable !")
-            continue
-
-        # Move to pose
-        moveit2.execute(plan)
-        success = moveit2.wait_until_executed()
-
-        if not success:
-            print(f"{position=} execution failed !")
-            continue
-
-        # Log only if successful
-        logger.clear()
-
-        logger.add_meas("target_index", i)
-        logger.add_meas("target_position", position)
-        logger.add_meas("target_orientation", quat_xyzw)
-
-        transform_msg = tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
-        tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
-        tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
-        joint_states = moveit2.joint_state
-
-        logger.add_meas("tf_position", tf_position)
-        logger.add_meas("tf_orientation", tf_orientation)
-        logger.add_meas("joint_position", joint_states.position.tolist())
-        logger.add_meas("joint_velocity", joint_states.velocity.tolist())
-        logger.add_meas("joint_effort", joint_states.effort.tolist())
-
-        logger.save(meas_nb)
-        meas_nb +=1
-
-    # Note: the same functionality can be achieved by setting
-    # `synchronous:=false` and `cancel_after_secs` to a negative value.
-    # moveit2.wait_until_executed()
+    experiment.run()
 
     rclpy.shutdown()
     executor_thread.join()
