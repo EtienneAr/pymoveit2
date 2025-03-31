@@ -131,6 +131,19 @@ class Experiment:
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
 
+        # Logger
+        self.logger = MeasuresLogger("~/exchange/measures")
+        self.end_comment = False
+
+    def finish(self):
+        if not self.end_comment:
+            end_comment = input("Any last command? ")
+            self.logger.add_metadata("end_comment", end_comment)
+            self.end_comment = True
+
+    def __del__(self):
+        self.finish()
+
     def run(self):
         # Get parameters
         position_ref = [0.7, 0.2, 0.95]
@@ -138,9 +151,12 @@ class Experiment:
         subdivide = [4, 4, 4]
 
         grid = PointGrid(position_ref, sampling_box, subdivide)
-        logger = MeasuresLogger("~/exchange/measures")
 
-        logger.add_metadata("joint_names", self.moveit2.joint_state.name)
+        # User comment
+        start_comment = input("Please comment this experiment: ")
+        self.logger.add_metadata("start_comment", start_comment)
+
+        self.logger.add_metadata("joint_names", self.moveit2.joint_state.name)
 
         quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
@@ -175,25 +191,27 @@ class Experiment:
                 continue
 
             # Log only if successful
-            logger.clear()
+            self.logger.clear()
 
-            logger.add_meas("target_index", i)
-            logger.add_meas("target_position", position)
-            logger.add_meas("target_orientation", quat_xyzw)
+            self.logger.add_meas("target_index", i)
+            self.logger.add_meas("target_position", position)
+            self.logger.add_meas("target_orientation", quat_xyzw)
 
             transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
             tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
             tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
             joint_states = self.moveit2.joint_state
 
-            logger.add_meas("tf_position", tf_position)
-            logger.add_meas("tf_orientation", tf_orientation)
-            logger.add_meas("joint_position", joint_states.position.tolist())
-            logger.add_meas("joint_velocity", joint_states.velocity.tolist())
-            logger.add_meas("joint_effort", joint_states.effort.tolist())
+            self.logger.add_meas("tf_position", tf_position)
+            self.logger.add_meas("tf_orientation", tf_orientation)
+            self.logger.add_meas("joint_position", joint_states.position.tolist())
+            self.logger.add_meas("joint_velocity", joint_states.velocity.tolist())
+            self.logger.add_meas("joint_effort", joint_states.effort.tolist())
 
-            logger.save(meas_nb)
+            self.logger.save(meas_nb)
             meas_nb +=1
+
+        self.finish()
 
 def main():
     rclpy.init()
