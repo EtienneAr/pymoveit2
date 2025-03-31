@@ -163,11 +163,11 @@ class Experiment:
             joint_velocities.append(joint_states.velocity.tolist())
             joint_efforts.append(joint_states.effort.tolist())
 
-        logger.add_meas("tf_positions", tf_position)
-        logger.add_meas("tf_orientations", tf_orientation)
-        logger.add_meas("joint_positions", joint_states.position.tolist())
-        logger.add_meas("joint_velocities", joint_states.velocity.tolist())
-        logger.add_meas("joint_efforts", joint_states.effort.tolist())
+        logger.add_meas("tf_positions", tf_positions)
+        logger.add_meas("tf_orientations", tf_orientations)
+        logger.add_meas("joint_positions", joint_positions)
+        logger.add_meas("joint_velocities", joint_velocities)
+        logger.add_meas("joint_efforts", joint_efforts)
 
     def run(self):
         # Get parameters
