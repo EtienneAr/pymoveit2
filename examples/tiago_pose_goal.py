@@ -199,7 +199,9 @@ def main():
 
         logger.add_meas("tf_position", tf_position)
         logger.add_meas("tf_orientation", tf_orientation)
-        logger.add_meas("joint_states", joint_states)
+        logger.add_meas("joint_position", joint_states.position.tolist())
+        logger.add_meas("joint_velocity", joint_states.velocity.tolist())
+        logger.add_meas("joint_effort", joint_states.effort.tolist())
 
         logger.save(meas_nb)
         meas_nb +=1
