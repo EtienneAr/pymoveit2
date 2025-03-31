@@ -151,7 +151,7 @@ def main():
     grid = PointGrid(position_ref, sampling_box, subdivide)
     logger = MeasuresLogger("~/exchange/measures")
 
-    logger.add_metadata("joint_names", moveit2.joint_state.name.tolist())
+    logger.add_metadata("joint_names", moveit2.joint_state.name)
 
     quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
