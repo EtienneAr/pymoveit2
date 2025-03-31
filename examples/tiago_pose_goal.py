@@ -18,6 +18,7 @@ import tf2_ros
 import asyncio
 import qtm_rt
 import threading
+import xml.etree.ElementTree as ET
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
@@ -105,18 +106,13 @@ class MocapIF:
             return
         await self.connection.stream_frames(components=["6d"], on_packet=self._on_packet)
 
-        # Get 6dof settings from qtm
+        # Get Body name to index mapping
         xml_string = await connection.get_parameters(parameters=["6d"])
-        self.body_index = self._create_body_index(xml_string)
-
-    def _create_body_index(self, xml_string):
         xml = ET.fromstring(xml_string)
 
-        body_to_index = {}
+        self.body_to_index = {}
         for index, body in enumerate(xml.findall("*/Body/Name")):
-            body_to_index[body.text.strip()] = index
-
-        return body_to_index
+            self.body_to_index[body.text.strip()] = index
 
     def _on_packet(self, packet):
         timestamp = packet.timestamp
