@@ -135,14 +135,39 @@ class Experiment:
         self.logger = MeasuresLogger("~/exchange/measures")
         self.end_comment = False
 
-    def finish(self):
+    def _finish(self):
         if not self.end_comment:
             end_comment = input("Any last command? ")
             self.logger.add_metadata("end_comment", end_comment)
             self.end_comment = True
 
     def __del__(self):
-        self.finish()
+        self._finish()
+
+    def _record_measures(self, logger, n=10):
+        tf_positions = []
+        tf_orientations = []
+        joint_positions = []
+        joint_velocities = []
+        joint_efforts = []
+
+        for _ in range(n):
+            transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
+            tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
+            tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
+            joint_states = self.moveit2.joint_state
+
+            tf_positions.append(tf_position)
+            tf_orientations.append(tf_orientation)
+            joint_positions.append(joint_states.position.tolist())
+            joint_velocities.append(joint_states.velocity.tolist())
+            joint_efforts.append(joint_states.effort.tolist())
+
+        logger.add_meas("tf_positions", tf_position)
+        logger.add_meas("tf_orientations", tf_orientation)
+        logger.add_meas("joint_positions", joint_states.position.tolist())
+        logger.add_meas("joint_velocities", joint_states.velocity.tolist())
+        logger.add_meas("joint_efforts", joint_states.effort.tolist())
 
     def run(self):
         # Get parameters
@@ -197,21 +222,13 @@ class Experiment:
             self.logger.add_meas("target_position", position)
             self.logger.add_meas("target_orientation", quat_xyzw)
 
-            transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
-            tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
-            tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
-            joint_states = self.moveit2.joint_state
-
-            self.logger.add_meas("tf_position", tf_position)
-            self.logger.add_meas("tf_orientation", tf_orientation)
-            self.logger.add_meas("joint_position", joint_states.position.tolist())
-            self.logger.add_meas("joint_velocity", joint_states.velocity.tolist())
-            self.logger.add_meas("joint_effort", joint_states.effort.tolist())
+            # actually measure joints - do n times
+            self._record_measures(self.logger)
 
             self.logger.save(meas_nb)
             meas_nb +=1
 
-        self.finish()
+        self._finish()
 
 def main():
     rclpy.init()
