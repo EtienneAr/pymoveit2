@@ -15,6 +15,9 @@ from time import sleep
 from datetime import datetime
 import pickle
 import tf2_ros
+import asyncio
+import qtm_rt
+import threading
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
@@ -83,6 +86,48 @@ class MeasuresLogger:
         with open(filepath, "wb") as f:
             pickle.dump(self._buffer, f)
         self.clear()
+
+class MocapIF:
+    def __init__(self):
+        # create mutex
+        self._packet_mutex = threading.Lock()
+        self._last_packet = None
+
+        # Run
+        asyncio.ensure_future(self._qtm_setup())
+        self._loop = asyncio.get_event_loop()
+        self._loop.run_forever()
+
+    async def _qtm_setup(self)
+        # create connection
+        self.connection = await qtm_rt.connect("127.0.0.1")
+        if self.connection is None:
+            return
+        await self.connection.stream_frames(components=["6d"], on_packet=self._on_packet)
+
+        # Get 6dof settings from qtm
+        xml_string = await connection.get_parameters(parameters=["6d"])
+        self.body_index = self._create_body_index(xml_string)
+
+    def _create_body_index(self, xml_string):
+        xml = ET.fromstring(xml_string)
+
+        body_to_index = {}
+        for index, body in enumerate(xml.findall("*/Body/Name")):
+            body_to_index[body.text.strip()] = index
+
+        return body_to_index
+
+    def _on_packet(self, packet):
+        timestamp = packet.timestamp
+        self._packet_mutex.acquire()
+        self._last_packet = packet
+        self._packet_mutex.release()
+
+    def get_body_pose(self):
+        self._packet_mutex.acquire()
+        info, bodies = self._last_packet.get_6d()
+        self._packet_mutex.release()
 
 class Experiment:
     def __init__(self, node, callback_group):
