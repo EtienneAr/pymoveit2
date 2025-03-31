@@ -10,6 +10,7 @@ from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.robots import tiagopro as robot
 from typing import Any, Tuple, Union, Optional
 import os
+import yaml
 from time import sleep
 from datetime import datetime
 import pickle
@@ -60,6 +61,19 @@ class MeasuresLogger:
 
     def clear(self):
         self._buffer = {}
+
+    def add_metadata(self, key: str, value: str):
+        filepath = os.path.join(self.dirpath, "metadata.yaml")
+        try:
+            with open(filepath, "r") as f:
+                metadata = yaml.safe_load(f)
+                if(not metadata):
+                    raise FileNotFoundError() # Raise an error to jump to the catch and initialize metadata properly
+        except FileNotFoundError as e:
+            metadata = {}
+        with open(filepath, "w+") as f:
+            metadata.update({key: value})
+            yaml.dump(metadata, f)
 
     def add_meas(self, measure_name: Union[int, str], obj: Any):
         self._buffer.update({measure_name: obj})
@@ -136,6 +150,8 @@ def main():
 
     grid = PointGrid(position_ref, sampling_box, subdivide)
     logger = MeasuresLogger("~/exchange/measures")
+
+    logger.add_metadata("joint_names", moveit2.joint_state.name.tolist())
 
     quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
