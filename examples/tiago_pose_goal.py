@@ -91,44 +91,65 @@ class MeasuresLogger:
 
 class MocapIF:
     def __init__(self):
-        # create mutex
         self._packet_mutex = threading.Lock()
         self._last_packet = None
+        self._loop = None
+        self._thread = None
+        self.is_ready = False
 
-        # Run
-        asyncio.ensure_future(self._qtm_setup())
-        self._loop = asyncio.get_event_loop()
+        # Start the event loop in a separate thread
+        self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
+        self._thread.start()
+
+    def _run_event_loop(self):
+        """Run the event loop in the background thread."""
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        # Schedule the setup coroutine
+        asyncio.run_coroutine_threadsafe(self._qtm_setup(), self._loop)
+
+        # Run the event loop
         self._loop.run_forever()
 
-    async def _qtm_setup(self)
+    async def _qtm_setup(self):
+        """Setup QTM connection."""
         # create connection
         self.connection = await qtm_rt.connect("192.168.11.60")
         if self.connection is None:
-            return
-        await self.connection.stream_frames(components=["6d"], on_packet=self._on_packet)
+            raise ConnectionError("Failed to connect to QTM")
+
+        # Start streaming
+        await self.connection.stream_frames(
+            components=["6d"],
+            on_packet=self._on_packet
+        )
 
         # Get Body name to index mapping
         xml_string = await self.connection.get_parameters(parameters=["6d"])
         xml = ET.fromstring(xml_string)
-
         self.body_to_index = {}
+
         for index, body in enumerate(xml.findall("*/Body/Name")):
             self.body_to_index[body.text.strip()] = index
+
+        self.is_ready = True
 
     def _on_packet(self, packet):
         timestamp = packet.timestamp
         self._packet_mutex.acquire()
-        self._last_packet = packet
-        self._packet_mutex.release()
+        try:
+            self._last_packet = packet
+        finally:
+            self._packet_mutex.release()
 
     def get_body_pose(self, body_name):
+        pose = None
         self._packet_mutex.acquire()
         if self._last_packet:
             info, bodies = self._last_packet.get_6d()
-            pose = copy(bodies[self.body_to_index(body_name)])
-            self._packet_mutex.release()
-        else:
-            pose = None
+            pose = copy(bodies[self.body_to_index[body_name]])
+        self._packet_mutex.release()
         return pose
 
 class Experiment:
