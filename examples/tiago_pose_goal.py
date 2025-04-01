@@ -226,24 +226,37 @@ class Experiment:
         joint_positions = []
         joint_velocities = []
         joint_efforts = []
+        mocap_framenumbers = []
+        mocap_timecodes = []
+        mocap_positions = []
+        mocap_rotmats = []
 
         for _ in range(n):
             transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
             tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
             tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
             joint_states = self.moveit2.joint_state
+            mocap_data = self.mocap_if.get_body_pose("support")
 
             tf_positions.append(tf_position)
             tf_orientations.append(tf_orientation)
             joint_positions.append(joint_states.position.tolist())
             joint_velocities.append(joint_states.velocity.tolist())
             joint_efforts.append(joint_states.effort.tolist())
+            mocap_framenumbers.append(mocap_data[0])
+            mocap_timecodes.append(mocap_data[1])
+            mocap_positions.append(mocap_data[2])
+            mocap_rotmats.append(mocap_data[3])
 
         logger.add_meas("tf_positions", tf_positions)
         logger.add_meas("tf_orientations", tf_orientations)
         logger.add_meas("joint_positions", joint_positions)
         logger.add_meas("joint_velocities", joint_velocities)
         logger.add_meas("joint_efforts", joint_efforts)
+        logger.add_meas("mocap_framenumbers", mocap_framenumbers)
+        logger.add_meas("mocap_timecodes", mocap_timecodes)
+        logger.add_meas("mocap_positions", mocap_positions)
+        logger.add_meas("mocap_rotmats", mocap_rotmats)
 
     def run(self):
         # Get parameters
