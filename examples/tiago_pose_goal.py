@@ -19,6 +19,7 @@ import asyncio
 import qtm_rt
 import threading
 import xml.etree.ElementTree as ET
+from copy import copy
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
@@ -101,13 +102,13 @@ class MocapIF:
 
     async def _qtm_setup(self)
         # create connection
-        self.connection = await qtm_rt.connect("127.0.0.1")
+        self.connection = await qtm_rt.connect("192.168.11.60")
         if self.connection is None:
             return
         await self.connection.stream_frames(components=["6d"], on_packet=self._on_packet)
 
         # Get Body name to index mapping
-        xml_string = await connection.get_parameters(parameters=["6d"])
+        xml_string = await self.connection.get_parameters(parameters=["6d"])
         xml = ET.fromstring(xml_string)
 
         self.body_to_index = {}
@@ -120,10 +121,15 @@ class MocapIF:
         self._last_packet = packet
         self._packet_mutex.release()
 
-    def get_body_pose(self):
+    def get_body_pose(self, body_name):
         self._packet_mutex.acquire()
-        info, bodies = self._last_packet.get_6d()
-        self._packet_mutex.release()
+        if self._last_packet:
+            info, bodies = self._last_packet.get_6d()
+            pose = copy(bodies[self.body_to_index(body_name)])
+            self._packet_mutex.release()
+        else:
+            pose = None
+        return pose
 
 class Experiment:
     def __init__(self, node, callback_group):
