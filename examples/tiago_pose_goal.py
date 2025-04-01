@@ -143,18 +143,21 @@ class MocapIF:
         finally:
             self._packet_mutex.release()
 
-    def get_body_pose(self, body_name):
-        framenumber = None
-        pose = None
+    def get_poses(self, bodies):
         timecode = None
+        framenumber = None
+        poses = []
         self._packet_mutex.acquire()
         if self._last_packet:
             framenumber = self._last_packet.framenumber
             timecode = self._last_packet.get_timecode()
-            info, bodies = self._last_packet.get_6d()
-            pose = copy(bodies[self.body_to_index[body_name]])
+            for body in bodies:
+                info, bodies = self._last_packet.get_6d()
+                pose_obj = copy(bodies[self.body_to_index[body_name]])
+                pose = [pose[0].x, pose[0].y, pose[0].y], pose[1].matrix
+                poses.append(pose)
         self._packet_mutex.release()
-        return framenumber, timecode, [pose[0].x, pose[0].y, pose[0].y], pose[1].matrix
+        return framenumber, timecode, poses
 
 class Experiment:
     def __init__(self, node, callback_group, mocap_if):
