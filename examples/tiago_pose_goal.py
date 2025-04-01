@@ -121,7 +121,7 @@ class MocapIF:
 
         # Start streaming
         await self.connection.stream_frames(
-            components=["6d"],
+            components=["6d", "timecode"],
             on_packet=self._on_packet
         )
 
@@ -144,17 +144,22 @@ class MocapIF:
             self._packet_mutex.release()
 
     def get_body_pose(self, body_name):
+        framenumber = None
         pose = None
+        timecode = None
         self._packet_mutex.acquire()
         if self._last_packet:
+            framenumber = self._last_packet.framenumber
+            timecode = self._last_packet.get_timecode()
             info, bodies = self._last_packet.get_6d()
             pose = copy(bodies[self.body_to_index[body_name]])
         self._packet_mutex.release()
-        return pose
+        return framenumber, timecode, [pose[0].x, pose[0].y, pose[0].y], pose[1].matrix
 
 class Experiment:
-    def __init__(self, node, callback_group):
+    def __init__(self, node, callback_group, mocap_if):
         self.node = node
+        self.mocap_if = mocap_if
 
         # Debugging markers
         self.reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
@@ -304,10 +309,17 @@ def main():
     # Create node for this example
     node = Node("tiago_pose_goal")
 
+    # Mocap
+    mocap_if = MocapIF()
+    print("Wainting for mocap...")
+    while not mocap_if.is_ready:
+        pass
+    print("Done")
+
     # Create callback group that allows execution of callbacks in parallel without restrictions
     callback_group = ReentrantCallbackGroup()
 
-    experiment =  Experiment(node, callback_group)
+    experiment =  Experiment(node, callback_group, mocap_if)
 
     # Spin the node in background thread(s) and wait a bit for initialization
     executor = rclpy.executors.MultiThreadedExecutor(2)
