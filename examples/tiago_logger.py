@@ -23,6 +23,7 @@ import qtm_rt
 import threading
 import xml.etree.ElementTree as ET
 from copy import copy
+import asyncio
 
 
 class FileLogger:
@@ -120,11 +121,12 @@ class MocapIF:
         if self._last_packet:
             framenumber = self._last_packet.framenumber
             timecode = self._last_packet.get_timecode()
-            for body in bodies:
+            for body_name in bodies:
                 info, bodies = self._last_packet.get_6d()
                 pose_obj = copy(bodies[self.body_to_index[body_name]])
-                pose = [pose[0].x, pose[0].y, pose[0].y], pose[1].matrix
-                poses.append(pose)
+                position = [pose_obj[0].x, pose_obj[0].y, pose_obj[0].y]
+                matrix = pose_obj[1].matrix
+                poses.append([position, matrix])
         self._packet_mutex.release()
         return framenumber, timecode, poses
 
@@ -179,30 +181,37 @@ class MeasureNode(Node):
         joint_efforts = []
         mocap_framenumbers = []
         mocap_timecodes = []
-        mocap_positions = []
-        mocap_rotmats = []
+
+        mocap_tool_positions = []
+        mocap_tool_rotmats = []
+        mocap_shoulder_positions = []
+        mocap_shoulder_rotmats = []
 
         deadline = self.get_clock().now() + rclpy.time.Duration(seconds=duration_s)
         while(rclpy.ok() and self.get_clock().now() <= deadline):
             if(not self._new_joint_state):
                 continue
 
-            transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
+            transform_msg = self.tf_buffer.lookup_transform("arm_left_7_link", "base_link", rclpy.time.Time())
             tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
             tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
             joint_states = self.get_joint_state()
-            # mocap_data = self.mocap_if.get_body_pose("support")
+            mocap_data = self.mocap_if.get_poses(["tool", "stand_shoulder"])
 
             tf_positions.append(tf_position)
             tf_orientations.append(tf_orientation)
+
             joint_positions.append(joint_states.position.tolist())
             joint_velocities.append(joint_states.velocity.tolist())
             joint_efforts.append(joint_states.effort.tolist())
-            # mocap_framenumbers.append(mocap_data[0])
-            # mocap_timecodes.append(mocap_data[1])
-            # mocap_positions.append(mocap_data[2])
-            # mocap_rotmats.append(mocap_data[3])
 
+            mocap_framenumbers.append(mocap_data[0])
+            mocap_timecodes.append(mocap_data[1])
+
+            mocap_tool_positions.append(mocap_data[2][0][0])
+            mocap_tool_rotmats.append(mocap_data[2][0][1])
+            mocap_shoulder_positions.append(mocap_data[2][1][0])
+            mocap_shoulder_rotmats.append(mocap_data[2][1][1])
 
         logger.add_meas("tf_positions", tf_positions)
         logger.add_meas("tf_orientations", tf_orientations)
@@ -211,8 +220,10 @@ class MeasureNode(Node):
         logger.add_meas("joint_efforts", joint_efforts)
         logger.add_meas("mocap_framenumbers", mocap_framenumbers)
         logger.add_meas("mocap_timecodes", mocap_timecodes)
-        logger.add_meas("mocap_positions", mocap_positions)
-        logger.add_meas("mocap_rotmats", mocap_rotmats)
+        logger.add_meas("mocap_tool_positions", mocap_tool_positions)
+        logger.add_meas("mocap_tool_rotmats", mocap_tool_rotmats)
+        logger.add_meas("mocap_shoulder_positions", mocap_shoulder_positions)
+        logger.add_meas("mocap_shoulder_rotmats", mocap_shoulder_rotmats)
         print(f"Logged {len(tf_positions)} points in {duration_s} s")
 
     def run(self,):
@@ -235,11 +246,11 @@ def main():
     rclpy.init()
 
     # Mocap
-    mocap_if = None #MocapIF()
-    # print("Wainting for mocap...")
-    # while not mocap_if.is_ready:
-    #     pass
-    # print("Done")
+    mocap_if = MocapIF()
+    print("Wainting for mocap...")
+    while not mocap_if.is_ready:
+        pass
+    print("Done")
 
     meas_node = MeasureNode(mocap_if)
 
