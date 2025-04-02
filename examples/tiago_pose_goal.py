@@ -295,6 +295,48 @@ class Experiment:
 
         return True
 
+    def run_charge(self, point_id):
+        # Get parameters
+        position_ref = [0.7, 0.2, 0.95]
+        sampling_box = [0.4, 0.4, 0.6]
+        subdivide = [4, 4, 4]
+
+        grid = PointGrid(position_ref, sampling_box, subdivide)
+
+        weight_list = [0,1,2,3,4,5,-1]
+
+        # User comment
+        start_comment = input("Please comment this experiment: ")
+        self.logger.add_metadata("start_comment", start_comment)
+
+        self.logger.add_metadata("joint_names", self.moveit2.joint_state.name)
+
+        quat_xyzw = [0.0, 0.707, 0.0, 0.707]
+
+        # Go to position
+        position = grid.points[point_id]
+        self.go_to(position, quat_xyzw, execute=True, debug_id = 0)
+
+        meas_nb = 0
+        for weight in weight_list:
+            input(f"Put {weight} weights on the robots and press enter...")
+
+            # Clear logger
+            self.logger.clear()
+
+            self.logger.add_meas("target_index", point_id)
+            self.logger.add_meas("target_position", position)
+            self.logger.add_meas("target_orientation", quat_xyzw)
+            self.logger.add_meas("weight", weight)
+
+            # actually measure joints - do n times
+            self._record_measures(self.logger)
+
+            self.logger.save(meas_nb)
+            meas_nb +=1
+
+        self._finish()
+
     def run(self):
         # Get parameters
         position_ref = [0.7, 0.2, 0.95]
@@ -356,7 +398,7 @@ def main():
     executor_thread.start()
     node.create_rate(1.0).sleep()
 
-    experiment.run()
+    experiment.run_charge(21)
 
     rclpy.shutdown()
     executor_thread.join()
