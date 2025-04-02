@@ -135,6 +135,11 @@ class MeasureNode(Node):
         # Mocap
         self.mocap_if = mocap_if
 
+        self._joint_state_mutex = threading.Lock()
+        self._last_joint_state = None
+        self._new_joint_state = False
+        self.create_subscription(JointState, "joint_states", self._joint_state_cb, 0)
+
         # Tf setup
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -152,6 +157,20 @@ class MeasureNode(Node):
     def __del__(self):
         self._finish()
 
+    def _joint_state_cb(self, msg):
+        self._joint_state_mutex.acquire()
+        self._last_joint_state = msg
+        self._new_joint_state = True
+        self._joint_state_mutex.release()
+
+    def get_joint_state(self):
+        res = None
+        self._joint_state_mutex.acquire()
+        res = copy(self._last_joint_state)
+        self._new_joint_state = False
+        self._joint_state_mutex.release()
+        return res
+
     def _record_measures(self, logger, duration_s=2.0):
         tf_positions = []
         tf_orientations = []
@@ -165,21 +184,20 @@ class MeasureNode(Node):
 
         deadline = self.get_clock().now() + rclpy.time.Duration(seconds=duration_s)
         while(rclpy.ok() and self.get_clock().now() <= deadline):
-            # if(not self.moveit2.new_joint_state_available):
-            #     continue
-            # self.moveit2.reset_new_joint_state_checker()
+            if(not self._new_joint_state):
+                continue
 
             transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
             tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
             tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
-            # joint_states = self.moveit2.joint_state
+            joint_states = self.get_joint_state()
             # mocap_data = self.mocap_if.get_body_pose("support")
 
             tf_positions.append(tf_position)
             tf_orientations.append(tf_orientation)
-            # joint_positions.append(joint_states.position.tolist())
-            # joint_velocities.append(joint_states.velocity.tolist())
-            # joint_efforts.append(joint_states.effort.tolist())
+            joint_positions.append(joint_states.position.tolist())
+            joint_velocities.append(joint_states.velocity.tolist())
+            joint_efforts.append(joint_states.effort.tolist())
             # mocap_framenumbers.append(mocap_data[0])
             # mocap_timecodes.append(mocap_data[1])
             # mocap_positions.append(mocap_data[2])
@@ -200,7 +218,10 @@ class MeasureNode(Node):
     def run(self,):
         start_comment = input("Please comment this experiment: ")
         self.logger.add_metadata("start_comment", start_comment)
-        # self.logger.add_metadata("joint_names", self.moveit2.joint_state.name)
+
+        while(self.get_joint_state() is None):
+            pass
+        self.logger.add_metadata("joint_names", self.get_joint_state().name)
 
         meas_id = 0
         while rclpy.ok():
