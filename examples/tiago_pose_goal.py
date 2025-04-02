@@ -260,6 +260,41 @@ class Experiment:
         logger.add_meas("mocap_positions", mocap_positions)
         logger.add_meas("mocap_rotmats", mocap_rotmats)
 
+    def go_to(self, position, quat_xyzw, *, execute=False, debug_id = 0):
+        plan = self.moveit2.plan(position= position, quat_xyzw = quat_xyzw)
+        success = (plan is not None)
+
+        # Diplay marker in RViz
+        self.reachability_marker.header.stamp = self.node.get_clock().now().to_msg()
+        self.reachability_marker.id = debug_id
+        self.reachability_marker.pose.position.x = position[0]
+        self.reachability_marker.pose.position.y = position[1]
+        self.reachability_marker.pose.position.z = position[2]
+        self.reachability_marker.color.r = 1.0 if not success else 0.0
+        self.reachability_marker.color.g = 1.0 if success else 0.0
+        self.reachability_marker.color.b = 0.0
+        self.reachability_publisher.publish(self.reachability_marker)
+        sleep(0.1)
+
+        if not success:
+            print(f"{position=} not reachable !")
+            return False
+
+        if not execute:
+            # Do not execute trajectory, terminate here
+            return True
+
+
+        # Move to pose
+        self.moveit2.execute(plan)
+        success = self.moveit2.wait_until_executed()
+
+        if not success:
+            print(f"{position=} execution failed !")
+            return False
+
+        return True
+
     def run(self):
         # Get parameters
         position_ref = [0.7, 0.2, 0.95]
@@ -278,33 +313,8 @@ class Experiment:
 
         meas_nb = 0
         for i, position in enumerate(grid.points):
-            plan = self.moveit2.plan(position= position, quat_xyzw = quat_xyzw)
-
-            success = (plan is not None)
-
-            # Diplay marker in RViz
-            self.reachability_marker.header.stamp = self.node.get_clock().now().to_msg()
-            self.reachability_marker.id = i
-            self.reachability_marker.pose.position.x = position[0]
-            self.reachability_marker.pose.position.y = position[1]
-            self.reachability_marker.pose.position.z = position[2]
-            self.reachability_marker.color.r = 1.0 if not success else 0.0
-            self.reachability_marker.color.g = 1.0 if success else 0.0
-            self.reachability_marker.color.b = 0.0
-            self.reachability_publisher.publish(self.reachability_marker)
-            sleep(0.1)
-
-            if not success:
-                print(f"{position=} not reachable !")
-                continue
-
-            # Move to pose
-            self.moveit2.execute(plan)
-            success = self.moveit2.wait_until_executed()
-
-            if not success:
-                print(f"{position=} execution failed !")
-                continue
+            # Go to position
+            self.go_to(position, quat_xyzw, execute=False, debug_id = i)
 
             # Log only if successful
             self.logger.clear()
