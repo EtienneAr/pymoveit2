@@ -122,6 +122,17 @@ class Experiment:
 
         if not success:
             print(f"{position=} execution failed !")
+            # Diplay marker in RViz
+            self.reachability_marker.header.stamp = self.node.get_clock().now().to_msg()
+            self.reachability_marker.id = debug_id
+            self.reachability_marker.pose.position.x = position[0]
+            self.reachability_marker.pose.position.y = position[1]
+            self.reachability_marker.pose.position.z = position[2]
+            self.reachability_marker.color.r = 1.0
+            self.reachability_marker.color.g = 1.0
+            self.reachability_marker.color.b = 0.0
+            self.reachability_publisher.publish(self.reachability_marker)
+            sleep(0.1)
             return False
 
         return True
@@ -140,7 +151,7 @@ class Experiment:
 
         # Go to position
         position = grid.points[point_id]
-        self.go_to(position, quat_xyzw, execute=False, debug_id = 0)
+        self.go_to(position, quat_xyzw, execute=True, debug_id = 0)
 
         for weight in weight_list:
             input(f"Put {weight} weights on the robots and press enter...")
@@ -178,7 +189,8 @@ def main():
     executor_thread.start()
     node.create_rate(1.0).sleep()
 
-    experiment.run()
+    # experiment.run()
+    experiment.run_charge(31)
 
     rclpy.shutdown()
     executor_thread.join()
