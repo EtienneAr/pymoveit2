@@ -195,13 +195,15 @@ class Experiment:
         self.moveit2.allowed_planning_time = 2.0
 
         # Add collision objects
+        cyl_height = 0.105
+        cyl_rad = 0.105
         self.moveit2.add_collision_cylinder("mocap_markers",
-            0.07, #height
-            0.03, # radius
-            position = [0.035,0.,0.],
-            quat_xyzw = [0.0, 0.707, 0.0, 0.707],
-            frame_id = "arm_left_tool_link")
-        self.moveit2.attach_collision_object("mocap_markers", "arm_left_tool_link", ["gripper_left_base_link", "arm_left_7_link", "arm_left_6_link"])
+            cyl_height, #height
+            cyl_rad, # radius
+            position = [0.0,0., cyl_height/2. - 0.0125],
+            quat_xyzw = [0.0, 0.0, 0.0, 1.0],
+            frame_id = "arm_left_7_link")
+        self.moveit2.attach_collision_object("mocap_markers", "arm_left_7_link", ["gripper_left_base_link", "arm_left_tool_link", "arm_left_7_link", "arm_left_6_link"])
 
         # Tf setup
         self.tf_buffer = tf2_ros.Buffer()
