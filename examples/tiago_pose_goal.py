@@ -6,7 +6,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from visualization_msgs.msg import Marker
 
-from pymoveit2 import MoveIt2, MoveIt2State
+from pymoveit2 import MoveIt2
 from pymoveit2.robots import tiagopro as robot
 from typing import Any, Tuple, Union, Optional
 import os
@@ -56,113 +56,9 @@ class PointGrid:
             index += indexes[j] * self.divisors[j]
         return self.get(index)
 
-class MeasuresLogger:
-    def __init__(self, path: Optional[str] = "."):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        dirpath = os.path.expanduser(os.path.join(path, timestamp))
-        self.dirpath = dirpath
-        os.makedirs(self.dirpath)
-        self.clear()
-
-    def clear(self):
-        self._buffer = {}
-
-    def add_metadata(self, key: str, value: str):
-        filepath = os.path.join(self.dirpath, "metadata.yaml")
-        try:
-            with open(filepath, "r") as f:
-                metadata = yaml.safe_load(f)
-                if(not metadata):
-                    raise FileNotFoundError() # Raise an error to jump to the catch and initialize metadata properly
-        except FileNotFoundError as e:
-            metadata = {}
-        with open(filepath, "w+") as f:
-            metadata.update({key: value})
-            yaml.dump(metadata, f)
-
-    def add_meas(self, measure_name: Union[int, str], obj: Any):
-        self._buffer.update({measure_name: obj})
-
-    def save(self, measure_id: str):
-        filepath = os.path.join(self.dirpath, f"{measure_id}.pkl")
-        with open(filepath, "wb") as f:
-            pickle.dump(self._buffer, f)
-        self.clear()
-
-class MocapIF:
-    def __init__(self):
-        self._packet_mutex = threading.Lock()
-        self._last_packet = None
-        self._loop = None
-        self._thread = None
-        self.is_ready = False
-
-        # Start the event loop in a separate thread
-        self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
-        self._thread.start()
-
-    def _run_event_loop(self):
-        """Run the event loop in the background thread."""
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-
-        # Schedule the setup coroutine
-        asyncio.run_coroutine_threadsafe(self._qtm_setup(), self._loop)
-
-        # Run the event loop
-        self._loop.run_forever()
-
-    async def _qtm_setup(self):
-        """Setup QTM connection."""
-        # create connection
-        self.connection = await qtm_rt.connect("192.168.11.60")
-        if self.connection is None:
-            raise ConnectionError("Failed to connect to QTM")
-
-        # Start streaming
-        await self.connection.stream_frames(
-            components=["6d", "timecode"],
-            on_packet=self._on_packet
-        )
-
-        # Get Body name to index mapping
-        xml_string = await self.connection.get_parameters(parameters=["6d"])
-        xml = ET.fromstring(xml_string)
-        self.body_to_index = {}
-
-        for index, body in enumerate(xml.findall("*/Body/Name")):
-            self.body_to_index[body.text.strip()] = index
-
-        self.is_ready = True
-
-    def _on_packet(self, packet):
-        timestamp = packet.timestamp
-        self._packet_mutex.acquire()
-        try:
-            self._last_packet = packet
-        finally:
-            self._packet_mutex.release()
-
-    def get_poses(self, bodies):
-        timecode = None
-        framenumber = None
-        poses = []
-        self._packet_mutex.acquire()
-        if self._last_packet:
-            framenumber = self._last_packet.framenumber
-            timecode = self._last_packet.get_timecode()
-            for body in bodies:
-                info, bodies = self._last_packet.get_6d()
-                pose_obj = copy(bodies[self.body_to_index[body_name]])
-                pose = [pose[0].x, pose[0].y, pose[0].y], pose[1].matrix
-                poses.append(pose)
-        self._packet_mutex.release()
-        return framenumber, timecode, poses
-
 class Experiment:
-    def __init__(self, node, callback_group, mocap_if):
+    def __init__(self, node, callback_group):
         self.node = node
-        self.mocap_if = mocap_if
 
         # Debugging markers
         self.reachability_publisher = node.create_publisher(Marker, 'reachability', 10)
@@ -205,61 +101,6 @@ class Experiment:
             frame_id = "arm_left_7_link")
         self.moveit2.attach_collision_object("mocap_markers", "arm_left_7_link", ["gripper_left_base_link", "arm_left_tool_link", "arm_left_7_link", "arm_left_6_link"])
 
-        # Tf setup
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
-
-        # Logger
-        self.logger = MeasuresLogger("~/exchange/measures")
-        self.end_comment = False
-
-    def _finish(self):
-        if not self.end_comment:
-            end_comment = input("Any last command? ")
-            self.logger.add_metadata("end_comment", end_comment)
-            self.end_comment = True
-
-    def __del__(self):
-        self._finish()
-
-    def _record_measures(self, logger, n=10):
-        tf_positions = []
-        tf_orientations = []
-        joint_positions = []
-        joint_velocities = []
-        joint_efforts = []
-        mocap_framenumbers = []
-        mocap_timecodes = []
-        mocap_positions = []
-        mocap_rotmats = []
-
-        for _ in range(n):
-            transform_msg = self.tf_buffer.lookup_transform(robot.end_effector_name(), robot.base_link_name(), rclpy.time.Time())
-            tf_position = transform_msg.transform.translation.x, transform_msg.transform.translation.y, transform_msg.transform.translation.z
-            tf_orientation = transform_msg.transform.rotation.x, transform_msg.transform.rotation.y, transform_msg.transform.rotation.z, transform_msg.transform.rotation.w
-            joint_states = self.moveit2.joint_state
-            mocap_data = self.mocap_if.get_body_pose("support")
-
-            tf_positions.append(tf_position)
-            tf_orientations.append(tf_orientation)
-            joint_positions.append(joint_states.position.tolist())
-            joint_velocities.append(joint_states.velocity.tolist())
-            joint_efforts.append(joint_states.effort.tolist())
-            mocap_framenumbers.append(mocap_data[0])
-            mocap_timecodes.append(mocap_data[1])
-            mocap_positions.append(mocap_data[2])
-            mocap_rotmats.append(mocap_data[3])
-
-        logger.add_meas("tf_positions", tf_positions)
-        logger.add_meas("tf_orientations", tf_orientations)
-        logger.add_meas("joint_positions", joint_positions)
-        logger.add_meas("joint_velocities", joint_velocities)
-        logger.add_meas("joint_efforts", joint_efforts)
-        logger.add_meas("mocap_framenumbers", mocap_framenumbers)
-        logger.add_meas("mocap_timecodes", mocap_timecodes)
-        logger.add_meas("mocap_positions", mocap_positions)
-        logger.add_meas("mocap_rotmats", mocap_rotmats)
-
     def go_to(self, position, quat_xyzw, *, execute=False, debug_id = 0):
         plan = self.moveit2.plan(position= position, quat_xyzw = quat_xyzw)
         success = (plan is not None)
@@ -284,7 +125,6 @@ class Experiment:
             # Do not execute trajectory, terminate here
             return True
 
-
         # Move to pose
         self.moveit2.execute(plan)
         success = self.moveit2.wait_until_executed()
@@ -305,37 +145,14 @@ class Experiment:
 
         weight_list = [0,1,2,3,4,5,-1]
 
-        # User comment
-        start_comment = input("Please comment this experiment: ")
-        self.logger.add_metadata("start_comment", start_comment)
-
-        self.logger.add_metadata("joint_names", self.moveit2.joint_state.name)
-
         quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
         # Go to position
         position = grid.points[point_id]
-        self.go_to(position, quat_xyzw, execute=True, debug_id = 0)
+        self.go_to(position, quat_xyzw, execute=False, debug_id = 0)
 
-        meas_nb = 0
         for weight in weight_list:
             input(f"Put {weight} weights on the robots and press enter...")
-
-            # Clear logger
-            self.logger.clear()
-
-            self.logger.add_meas("target_index", point_id)
-            self.logger.add_meas("target_position", position)
-            self.logger.add_meas("target_orientation", quat_xyzw)
-            self.logger.add_meas("weight", weight)
-
-            # actually measure joints - do n times
-            self._record_measures(self.logger)
-
-            self.logger.save(meas_nb)
-            meas_nb +=1
-
-        self._finish()
 
     def run(self):
         # Get parameters
@@ -345,51 +162,23 @@ class Experiment:
 
         grid = PointGrid(position_ref, sampling_box, subdivide)
 
-        # User comment
-        start_comment = input("Please comment this experiment: ")
-        self.logger.add_metadata("start_comment", start_comment)
-
-        self.logger.add_metadata("joint_names", self.moveit2.joint_state.name)
-
         quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
-        meas_nb = 0
         for i, position in enumerate(grid.points):
+            input("Press enter to go to next point...")
             # Go to position
-            self.go_to(position, quat_xyzw, execute=False, debug_id = i)
-
-            # Log only if successful
-            self.logger.clear()
-
-            self.logger.add_meas("target_index", i)
-            self.logger.add_meas("target_position", position)
-            self.logger.add_meas("target_orientation", quat_xyzw)
-
-            # actually measure joints - do n times
-            self._record_measures(self.logger)
-
-            self.logger.save(meas_nb)
-            meas_nb +=1
-
-        self._finish()
+            self.go_to(position, quat_xyzw, execute=True, debug_id = i)
 
 def main():
     rclpy.init()
 
     # Create node for this example
-    node = Node("tiago_pose_goal")
-
-    # Mocap
-    mocap_if = MocapIF()
-    print("Wainting for mocap...")
-    while not mocap_if.is_ready:
-        pass
-    print("Done")
+    node = Node("tiago_move_node")
 
     # Create callback group that allows execution of callbacks in parallel without restrictions
     callback_group = ReentrantCallbackGroup()
 
-    experiment =  Experiment(node, callback_group, mocap_if)
+    experiment =  Experiment(node, callback_group)
 
     # Spin the node in background thread(s) and wait a bit for initialization
     executor = rclpy.executors.MultiThreadedExecutor(2)
@@ -398,7 +187,7 @@ def main():
     executor_thread.start()
     node.create_rate(1.0).sleep()
 
-    experiment.run_charge(21)
+    experiment.run()
 
     rclpy.shutdown()
     executor_thread.join()
