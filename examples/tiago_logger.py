@@ -9,12 +9,8 @@ Script pour comparer target pose et tf pose
 """
 
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
-from visualization_msgs.msg import Marker
 from sensor_msgs.msg import JointState
-
-from pymoveit2 import MoveIt2
 from pymoveit2.robots import tiagopro as robot
 from typing import Any, Tuple, Union, Optional
 import os
@@ -23,11 +19,11 @@ from time import sleep
 from datetime import datetime
 import pickle
 import tf2_ros
-import asyncio
 import qtm_rt
 import threading
 import xml.etree.ElementTree as ET
 from copy import copy
+
 
 class FileLogger:
     def __init__(self, path: Optional[str] = "."):

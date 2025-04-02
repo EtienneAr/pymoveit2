@@ -9,17 +9,8 @@ from visualization_msgs.msg import Marker
 from pymoveit2 import MoveIt2
 from pymoveit2.robots import tiagopro as robot
 from typing import Any, Tuple, Union, Optional
-import os
-import yaml
 from time import sleep
-from datetime import datetime
-import pickle
-import tf2_ros
 import asyncio
-import qtm_rt
-import threading
-import xml.etree.ElementTree as ET
-from copy import copy
 
 class PointGrid:
     def __init__(self, center: Tuple[float, float, float], volume = Tuple[float, float, float], subdivisions = Tuple[int, int, int]):
