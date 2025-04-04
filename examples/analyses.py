@@ -43,12 +43,11 @@ def load_pickle(file_path):
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
-def compute_all_transforms(file_path, shoulder_M_base = None):
+def compute_transforms_avg_from_file(file_path, shoulder_M_base = None):
     data = load_pickle(file_path)
 
     # Extract transformations for each time step
-    shoulder_M_base_list = []
-    tool_tf_M_tool_mocap_list = []
+    result_list = []
     for i in range(len(data['mocap_tool_rotmats'])):
         world_M_tool_mocap = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][0]), [3,3]), np.array(data['mocap_tool_positions'][0]))
         world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][0]), [3,3]), np.array(data['mocap_shoulder_positions'][0]))
@@ -59,37 +58,20 @@ def compute_all_transforms(file_path, shoulder_M_base = None):
         shoulder_M_tool_mocap = world_M_shoulder.inverse() * world_M_tool_mocap
         tool_mocap_M_shoulder = world_M_tool_mocap.inverse() * world_M_shoulder
 
-        # If no shoulder to base tranform given -> Hyp: tf and mocap are located at the same place
+        # If no shoulder to base tranform given, compute it !
+        # -> Hyp: tf and mocap are located at the same place
         if not shoulder_M_base:
-            shoulder_M_base = deepcopy(shoulder_M_tool_mocap * base_M_tool_tf.inverse())
-
-        # Compute deviation from standard
-        tool_tf_M_tool_mocap = tool_mocap_M_shoulder * shoulder_M_base * base_M_tool_tf
-
-        # Add to list for later averaging
-        shoulder_M_base_list.append(shoulder_M_base)
-        tool_tf_M_tool_mocap_list.append(tool_tf_M_tool_mocap)
-
-    shoulder_M_base = compute_barycenter(shoulder_M_base_list)
-    tool_tf_M_tool_mocap = compute_barycenter(tool_tf_M_tool_mocap_list)
-
-    shoulder_M_base_variance = compute_covariance(shoulder_M_base, shoulder_M_base_list)
-    tool_tf_M_tool_mocap_variance = compute_covariance(tool_tf_M_tool_mocap, tool_tf_M_tool_mocap_list)
-
-    return shoulder_M_base, tool_tf_M_tool_mocap, shoulder_M_base_variance, tool_tf_M_tool_mocap_variance
-
-
-def experiment_comparison(directory):
-    shoulder_M_base = None
-    for i in range(4):
-        file_path = os.path.join(directory, f"{i}.pkl")
-
-        if i == 0:
-            shoulder_M_base, tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+            shoulder_M_base_i = shoulder_M_tool_mocap * base_M_tool_tf.inverse()
+            result_list.append(shoulder_M_base_i)
         else:
-            _,               tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+            # Compute mocap vs tf error
+            tool_tf_M_tool_mocap = tool_mocap_M_shoulder * shoulder_M_base * base_M_tool_tf
+            result_list.append(tool_tf_M_tool_mocap)
 
-        # print(f"File {i}.pkl (Deviation from standard TF):\n", tool_tf_M_tool_mocap)
+    result_avg = compute_barycenter(result_list)
+    result_variance = compute_covariance(result_avg, result_list)
+    return result_avg, result_variance
+
 
 def analyse_4x4x4_0123_experiment():
     plt.ion()  # Turn on interactive mode
@@ -99,19 +81,21 @@ def analyse_4x4x4_0123_experiment():
         file_path = os.path.join("/home/earlaud/exchange/measures/2025-04-02_17-36-56", f"{i}.pkl")
 
         if (i %4) == 0:
+            # Reset measurements for plots
             y = []
             y_err = []
-            shoulder_M_base, tool_tf_M_tool_mocap, shoulder_M_base_variance, tool_tf_M_tool_mocap_variance = compute_all_transforms(file_path, None)
-        else:
-            _,               tool_tf_M_tool_mocap, _                       , tool_tf_M_tool_mocap_variance = compute_all_transforms(file_path, shoulder_M_base)
+            # Compute shoulder to base transform (for reference)
+            shoulder_M_base, shoulder_M_base_variance = compute_transforms_avg_from_file(file_path, None)
+
+        # Compute Mocap vs tf transform
+        tool_tf_M_tool_mocap, tool_tf_M_tool_mocap_variance = compute_transforms_avg_from_file(file_path, shoulder_M_base)
+        ecart_type = np.sqrt(np.linalg.norm(tool_tf_M_tool_mocap_variance[3:,3:]))
 
         y.append(np.linalg.norm(tool_tf_M_tool_mocap.translation))
-        ecart_type = np.sqrt(np.linalg.norm(tool_tf_M_tool_mocap_variance[3:,3:]))
         y_err.append(ecart_type)
 
         if (i %4) == 3:
             ax.errorbar(x, y, yerr=y_err, fmt='-o', label=f'configuration {i//4 +1}', capsize=3)
-            # ax.plot(x, y, label=f'configuration {i//4 +1}')
             plt.draw()
 
     plt.ioff()  # Turn off interactive mode
