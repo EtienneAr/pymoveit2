@@ -4,6 +4,7 @@ import numpy as np
 from copy import deepcopy
 import pinocchio as pin
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 def transform_to_se3(position, rotation_matrix):
     return pin.XYZQUATToSE3([trans.translation.x, trans.translation.y, trans.translation.z,
@@ -76,6 +77,11 @@ def compute_transforms_avg_from_file(file_path, shoulder_M_base = None):
 def analyse_4x4x4_0123_experiment():
     plt.ion()  # Turn on interactive mode
     fig, ax = plt.subplots()
+    ax.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
+    ax.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(2))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
     x = [0., 1., 2., 3.]
     for i in range(24):
         file_path = os.path.join("/home/earlaud/exchange/measures/2025-04-02_17-36-56", f"{i}.pkl")
