@@ -42,13 +42,13 @@ def load_pickle(file_path):
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
-def compute_transformations(directory):
-    shoulder_M_base = None
-    for i in range(4):
-        file_path = os.path.join(directory, f"{i}.pkl")
-        data = load_pickle(file_path)
+def compute_all_transforms(file_path, shoulder_M_base = None):
+    data = load_pickle(file_path)
 
-        # Extract transformations
+    # Extract transformations for each time step
+    shoulder_M_base_list = []
+    tool_tf_M_tool_mocap_list = []
+    for i in range(len(data['mocap_tool_rotmats'])):
         world_M_tool_mocap = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][0]), [3,3]), np.array(data['mocap_tool_positions'][0]))
         world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][0]), [3,3]), np.array(data['mocap_shoulder_positions'][0]))
         base_M_tool_tf = pin.XYZQUATToSE3(np.array(data['tf_positions'][0] + data['tf_orientations'][0]))
@@ -58,13 +58,35 @@ def compute_transformations(directory):
         shoulder_M_tool_mocap = world_M_shoulder.inverse() * world_M_tool_mocap
         tool_mocap_M_shoulder = world_M_tool_mocap.inverse() * world_M_shoulder
 
-        if i == 0:
+        # If no shoulder to base tranform given -> Hyp: tf and mocap are located at the same place
+        if not shoulder_M_base:
             shoulder_M_base = deepcopy(shoulder_M_tool_mocap * base_M_tool_tf.inverse())
-            # print(f"Standard TF Transformation (Mocap -> TF) from file {i}.pkl:\n", shoulder_M_base)
+
         # Compute deviation from standard
         tool_tf_M_tool_mocap = tool_mocap_M_shoulder * shoulder_M_base * base_M_tool_tf
+
+        # Add to list for later averaging
+        shoulder_M_base_list.append(shoulder_M_base)
+        tool_tf_M_tool_mocap_list.append(tool_tf_M_tool_mocap)
+
+    shoulder_M_base = compute_barycenter(shoulder_M_base_list)
+    tool_tf_M_tool_mocap = compute_barycenter(tool_tf_M_tool_mocap_list)
+
+    return shoulder_M_base, tool_tf_M_tool_mocap
+
+
+def experiment_comparison(directory):
+    shoulder_M_base = None
+    for i in range(4):
+        file_path = os.path.join(directory, f"{i}.pkl")
+
+        if i == 0:
+            shoulder_M_base, tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+        else:
+            _,               tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+
         print(f"File {i}.pkl (Deviation from standard TF):\n", tool_tf_M_tool_mocap)
 
 if __name__ == "__main__":
     directory = "/home/earlaud/exchange/measures/2025-04-02_14-41-55"  # Change to your actual directory
-    compute_transformations(directory)
+    experiment_comparison(directory)
