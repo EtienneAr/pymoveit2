@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 from copy import deepcopy
 import pinocchio as pin
+import matplotlib.pyplot as plt
 
 def transform_to_se3(position, rotation_matrix):
     return pin.XYZQUATToSE3([trans.translation.x, trans.translation.y, trans.translation.z,
@@ -87,6 +88,32 @@ def experiment_comparison(directory):
 
         print(f"File {i}.pkl (Deviation from standard TF):\n", tool_tf_M_tool_mocap)
 
+def analyse_4x4x4_0123_experiment():
+    plt.ion()  # Turn on interactive mode
+    fig, ax = plt.subplots()
+    x = [0., 1., 2., 3.]
+    for i in range(24):
+        file_path = os.path.join("/home/earlaud/exchange/measures/2025-04-02_17-36-56", f"{i}.pkl")
+
+        if (i %4) == 0:
+            y = []
+            shoulder_M_base, tool_tf_M_tool_mocap = compute_all_transforms(file_path, None)
+        else:
+            _,               tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+
+        y.append(float(np.linalg.norm(tool_tf_M_tool_mocap.translation)))
+
+        if (i %4) == 3:
+            print(x)
+            print(y)
+            ax.plot(x, y, label=f'configuration {i//4 +1}')
+            plt.draw()
+
+    plt.ioff()  # Turn off interactive mode
+    plt.ylabel("Avg mocap - proprio dist")
+    plt.xlabel("weight (kg)")
+    plt.legend()
+    plt.show()
+
 if __name__ == "__main__":
-    directory = "/home/earlaud/exchange/measures/2025-04-02_14-41-55"  # Change to your actual directory
-    experiment_comparison(directory)
+    analyse_4x4x4_0123_experiment()
