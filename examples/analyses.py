@@ -73,7 +73,10 @@ def compute_all_transforms(file_path, shoulder_M_base = None):
     shoulder_M_base = compute_barycenter(shoulder_M_base_list)
     tool_tf_M_tool_mocap = compute_barycenter(tool_tf_M_tool_mocap_list)
 
-    return shoulder_M_base, tool_tf_M_tool_mocap
+    shoulder_M_base_variance = compute_covariance(shoulder_M_base, shoulder_M_base_list)
+    tool_tf_M_tool_mocap_variance = compute_covariance(tool_tf_M_tool_mocap, tool_tf_M_tool_mocap_list)
+
+    return shoulder_M_base, tool_tf_M_tool_mocap, shoulder_M_base_variance, tool_tf_M_tool_mocap_variance
 
 
 def experiment_comparison(directory):
@@ -86,7 +89,7 @@ def experiment_comparison(directory):
         else:
             _,               tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
 
-        print(f"File {i}.pkl (Deviation from standard TF):\n", tool_tf_M_tool_mocap)
+        # print(f"File {i}.pkl (Deviation from standard TF):\n", tool_tf_M_tool_mocap)
 
 def analyse_4x4x4_0123_experiment():
     plt.ion()  # Turn on interactive mode
@@ -97,21 +100,23 @@ def analyse_4x4x4_0123_experiment():
 
         if (i %4) == 0:
             y = []
-            shoulder_M_base, tool_tf_M_tool_mocap = compute_all_transforms(file_path, None)
+            y_err = []
+            shoulder_M_base, tool_tf_M_tool_mocap, shoulder_M_base_variance, tool_tf_M_tool_mocap_variance = compute_all_transforms(file_path, None)
         else:
-            _,               tool_tf_M_tool_mocap = compute_all_transforms(file_path, shoulder_M_base)
+            _,               tool_tf_M_tool_mocap, _                       , tool_tf_M_tool_mocap_variance = compute_all_transforms(file_path, shoulder_M_base)
 
-        y.append(float(np.linalg.norm(tool_tf_M_tool_mocap.translation)))
+        y.append(np.linalg.norm(tool_tf_M_tool_mocap.translation))
+        ecart_type = np.sqrt(np.linalg.norm(tool_tf_M_tool_mocap_variance[3:,3:]))
+        y_err.append(ecart_type)
 
         if (i %4) == 3:
-            print(x)
-            print(y)
-            ax.plot(x, y, label=f'configuration {i//4 +1}')
+            ax.errorbar(x, y, yerr=y_err, fmt='-o', label=f'configuration {i//4 +1}', capsize=3)
+            # ax.plot(x, y, label=f'configuration {i//4 +1}')
             plt.draw()
 
     plt.ioff()  # Turn off interactive mode
-    plt.ylabel("Avg mocap - proprio dist")
-    plt.xlabel("weight (kg)")
+    plt.ylabel("Deviation (mm)")
+    plt.xlabel("Weight (kg)")
     plt.legend()
     plt.show()
 
