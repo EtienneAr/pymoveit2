@@ -49,9 +49,9 @@ def compute_transforms_avg_from_file(file_path, shoulder_M_base = None):
     # Extract transformations for each time step
     result_list = []
     for i in range(len(data['mocap_tool_rotmats'])):
-        world_M_tool_mocap = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][0]), [3,3]), np.array(data['mocap_tool_positions'][0]))
-        world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][0]), [3,3]), np.array(data['mocap_shoulder_positions'][0]))
-        base_M_tool_tf = pin.XYZQUATToSE3(np.array(data['tf_positions'][0] + data['tf_orientations'][0]))
+        world_M_tool_mocap = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][i]), [3,3]), np.array(data['mocap_tool_positions'][i]))
+        world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][i]), [3,3]), np.array(data['mocap_shoulder_positions'][i]))
+        base_M_tool_tf = pin.XYZQUATToSE3(np.array(data['tf_positions'][i] + data['tf_orientations'][i]))
         base_M_tool_tf.translation *= 1000.
 
         # Compute mocap (tool -> shoulder)
