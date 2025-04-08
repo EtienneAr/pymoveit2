@@ -6,10 +6,6 @@ import pinocchio as pin
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-def transform_to_se3(position, rotation_matrix):
-    return pin.XYZQUATToSE3([trans.translation.x, trans.translation.y, trans.translation.z,
-                             trans.rotation.x, trans.rotation.y, trans.rotation.z, trans.rotation.w])
-
 def compute_barycenter(pose_list, fp_iter=100, callback=None):
     """
     bi invariant barycenter
