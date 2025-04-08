@@ -5,8 +5,6 @@ import pinocchio as pin
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import csv
-import math
-
 
 def transform_to_se3(data, obj_name):
     position = np.array([float(data[obj_name + ' X']), float(data[obj_name + ' Y']), float(data[obj_name + ' Z'])])
@@ -120,6 +118,8 @@ def analyse_base_experiment():
 
     # Initialize pivot table
     weights = {k: [] for k in keys}
+    base_rot_errs = {k: [] for k in keys}
+    base_rot_sigmas = {k: [] for k in keys}
     torso_rot_errs = {k: [] for k in keys}
     torso_rot_sigmas = {k: [] for k in keys}
 
@@ -140,34 +140,45 @@ def analyse_base_experiment():
 
         ref_meas = find_ref_meas(meas)
 
+        # Compute values of interest for each measure
+        tot_weight = meas['left_weight'] + meas['right_weight']
         delta_weight = meas['left_weight'] + meas['right_weight'] - ref_meas['left_weight'] - ref_meas['right_weight']
 
         base_delta_pose = ref_meas['base_pose_avg'].inverse() * meas['base_pose_avg']
         torso_delta_pose = ref_meas['torso_pose_avg'].inverse() * meas['torso_pose_avg']
 
-        # print(np.trace(base_delta_pose.rotation)/2. - 0.5)
         base_rot_err = np.linalg.norm(pin.rpy.matrixToRpy(base_delta_pose.rotation))
-        # print(np.trace(torso_delta_pose.rotation)/2. - 0.5)
+        base_rot_sigma = np.sqrt(np.linalg.norm(meas['base_variance'][:3,:3]))
+
         torso_rot_err = np.linalg.norm(pin.rpy.matrixToRpy(torso_delta_pose.rotation))
         torso_rot_sigma = np.sqrt(np.linalg.norm(meas['torso_variance'][:3,:3]))
 
-        weights[key].append(meas['left_weight'] + meas['right_weight'])
+        # Add to result list
+        weights[key].append(tot_weight)
+
+        base_rot_errs[key].append(base_rot_err)
+        base_rot_sigmas[key].append(base_rot_sigma)
+
         torso_rot_errs[key].append(torso_rot_err)
         torso_rot_sigmas[key].append(torso_rot_sigma)
 
-
+    # Plot results
     plt.ion()  # Turn on interactive mode
     fig, ax = plt.subplots()
-    # ax.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
-    # ax.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
-    # ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    # ax.yaxis.set_major_locator(ticker.MultipleLocator(2))
-    # ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
+    ax.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.001))
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.0002))
+    i = 0
     for key in weights.keys():
         if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
             continue
-        ax.errorbar(weights[key], torso_rot_errs[key], yerr=torso_rot_sigmas[key], fmt='o', label=f'configuration {key}', capsize=3)
+        ax.errorbar(weights[key], torso_rot_errs[key], yerr=torso_rot_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso rotation", capsize=3)
+        ax.errorbar(weights[key], base_rot_errs[key], yerr=base_rot_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base rotation", capsize=3)
         plt.draw()
+        i+=1
 
     plt.ioff()  # Turn off interactive mode
     plt.ylabel("Deviation (rad)")
