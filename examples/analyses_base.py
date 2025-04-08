@@ -118,10 +118,15 @@ def analyse_base_experiment():
 
     # Initialize pivot table
     weights = {k: [] for k in keys}
+    base_trans_errs = {k: [] for k in keys}
+    base_trans_sigmas = {k: [] for k in keys}
+    torso_trans_errs = {k: [] for k in keys}
+    torso_trans_sigmas = {k: [] for k in keys}
     base_rot_errs = {k: [] for k in keys}
     base_rot_sigmas = {k: [] for k in keys}
     torso_rot_errs = {k: [] for k in keys}
     torso_rot_sigmas = {k: [] for k in keys}
+
 
     for meas in meas_avg_list:
         key = meas[key_field]
@@ -147,6 +152,12 @@ def analyse_base_experiment():
         base_delta_pose = ref_meas['base_pose_avg'].inverse() * meas['base_pose_avg']
         torso_delta_pose = ref_meas['torso_pose_avg'].inverse() * meas['torso_pose_avg']
 
+        base_trans_err = np.linalg.norm(base_delta_pose.translation)
+        base_trans_sigma = np.sqrt(np.linalg.norm(meas['base_variance'][3:,3:]))
+
+        torso_trans_err = np.linalg.norm(torso_delta_pose.translation)
+        torso_trans_sigma = np.sqrt(np.linalg.norm(meas['torso_variance'][3:,3:]))
+
         base_rot_err = np.linalg.norm(pin.rpy.matrixToRpy(base_delta_pose.rotation))
         base_rot_sigma = np.sqrt(np.linalg.norm(meas['base_variance'][:3,:3]))
 
@@ -156,6 +167,12 @@ def analyse_base_experiment():
         # Add to result list
         weights[key].append(tot_weight)
 
+        base_trans_errs[key].append(base_trans_err)
+        base_trans_sigmas[key].append(base_trans_sigma)
+
+        torso_trans_errs[key].append(torso_trans_err)
+        torso_trans_sigmas[key].append(torso_trans_sigma)
+
         base_rot_errs[key].append(base_rot_err)
         base_rot_sigmas[key].append(base_rot_sigma)
 
@@ -164,25 +181,50 @@ def analyse_base_experiment():
 
     # Plot results
     plt.ion()  # Turn on interactive mode
-    fig, ax = plt.subplots()
-    ax.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
-    ax.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
-    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    ax.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
-    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.001))
-    ax.yaxis.set_minor_locator(ticker.MultipleLocator(0.0002))
+
+    # Rotation
+    fig1, ax1 = plt.subplots()
+    ax1.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
+    ax1.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
+    ax1.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax1.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax1.yaxis.set_major_locator(ticker.MultipleLocator(0.001))
+    ax1.yaxis.set_minor_locator(ticker.MultipleLocator(0.0002))
     i = 0
     for key in weights.keys():
         if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
             continue
-        ax.errorbar(weights[key], torso_rot_errs[key], yerr=torso_rot_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso rotation", capsize=3)
-        ax.errorbar(weights[key], base_rot_errs[key], yerr=base_rot_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base rotation", capsize=3)
+        ax1.errorbar(weights[key], torso_rot_errs[key], yerr=torso_rot_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso rotation", capsize=3)
+        ax1.errorbar(weights[key], base_rot_errs[key], yerr=base_rot_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base rotation", capsize=3)
         plt.draw()
         i+=1
 
+    ax1.set_title("Rotation error")
+    ax1.set_ylabel("Deviation (rad)")
+    ax1.set_xlabel("Weight (kg)")
+
+    # Translation
+    fig1, ax1 = plt.subplots()
+    ax1.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
+    ax1.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
+    ax1.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax1.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax1.yaxis.set_major_locator(ticker.MultipleLocator(1.))
+    ax1.yaxis.set_minor_locator(ticker.MultipleLocator(.2))
+    i = 0
+    for key in weights.keys():
+        if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
+            continue
+        ax1.errorbar(weights[key], torso_trans_errs[key], yerr=torso_trans_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso translation", capsize=3)
+        ax1.errorbar(weights[key], base_trans_errs[key], yerr=base_trans_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base translation", capsize=3)
+        plt.draw()
+        i+=1
+
+    ax1.set_title("Translation error")
+    ax1.set_ylabel("Deviation (mm)")
+    ax1.set_xlabel("Weight (kg)")
+
     plt.ioff()  # Turn off interactive mode
-    plt.ylabel("Deviation (rad)")
-    plt.xlabel("Weight (kg)")
     plt.legend()
     plt.show()
 
