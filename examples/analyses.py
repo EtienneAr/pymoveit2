@@ -97,10 +97,11 @@ def analyse_4x4x4_0123_experiment():
         y_err.append(ecart_type)
 
         if (i %4) == 3:
-            ax.errorbar(x, y, yerr=y_err, fmt='-o', label=f'configuration {i//4 +1}', capsize=3)
+            ax.errorbar(x, y, yerr=y_err, fmt='o', label=f'configuration {i//4 +1}', capsize=3)
             plt.draw()
 
     plt.ioff()  # Turn off interactive mode
+    plt.title("Arm translation error")
     plt.ylabel("Deviation (mm)")
     plt.xlabel("Weight (kg)")
     plt.legend()
