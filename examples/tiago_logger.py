@@ -108,10 +108,8 @@ class MocapIF:
     def _on_packet(self, packet):
         timestamp = packet.timestamp
         self._packet_mutex.acquire()
-        try:
-            self._last_packet = packet
-        finally:
-            self._packet_mutex.release()
+        self._last_packet = packet
+        self._packet_mutex.release()
 
     def get_poses(self, bodies):
         timecode = None
