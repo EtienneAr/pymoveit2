@@ -122,6 +122,8 @@ def analyse_base_experiment():
     base_trans_sigmas = {k: [] for k in keys}
     torso_trans_errs = {k: [] for k in keys}
     torso_trans_sigmas = {k: [] for k in keys}
+    tooltip_trans_errs = {k: [] for k in keys}
+    tooltip_trans_sigmas = {k: [] for k in keys}
     base_rot_errs = {k: [] for k in keys}
     base_rot_sigmas = {k: [] for k in keys}
     torso_rot_errs = {k: [] for k in keys}
@@ -155,8 +157,25 @@ def analyse_base_experiment():
         base_trans_err = np.linalg.norm(base_delta_pose.translation)
         base_trans_sigma = np.sqrt(np.linalg.norm(meas['base_variance'][3:,3:]))
 
+        # base_trans_err = base_delta_pose.translation[2]
+        # base_trans_sigma = np.sqrt(meas['base_variance'][5,5])
+
         torso_trans_err = np.linalg.norm(torso_delta_pose.translation)
         torso_trans_sigma = np.sqrt(np.linalg.norm(meas['torso_variance'][3:,3:]))
+
+        # torso_trans_err = torso_delta_pose.translation[2]
+        # torso_trans_sigma = np.sqrt(meas['torso_variance'][5,5])
+
+        if key == "homeboth":
+            torso_m_tooltip = pin.XYZQUATToSE3(np.array([100.,0,200., 0,0,0,1]))
+        else:
+            torso_m_tooltip = pin.XYZQUATToSE3(np.array([1000.,0.,0., 0,0,0,1]))
+        tooltip_delta_pose = torso_m_tooltip.inverse() * torso_delta_pose * torso_m_tooltip
+        tooltip_variance = meas['torso_variance']
+        tooltip_variance[3:, 3:] += (torso_m_tooltip.translation * np.transpose(torso_m_tooltip.translation)) * tooltip_variance[:3, :3]
+
+        tooltip_trans_err = np.linalg.norm(tooltip_delta_pose.translation)
+        tooltip_trans_sigma = np.sqrt(np.linalg.norm(tooltip_variance[3:,3:]))
 
         base_rot_err = np.linalg.norm(pin.rpy.matrixToRpy(base_delta_pose.rotation))
         base_rot_sigma = np.sqrt(np.linalg.norm(meas['base_variance'][:3,:3]))
@@ -172,6 +191,9 @@ def analyse_base_experiment():
 
         torso_trans_errs[key].append(torso_trans_err)
         torso_trans_sigmas[key].append(torso_trans_sigma)
+
+        tooltip_trans_errs[key].append(tooltip_trans_err)
+        tooltip_trans_sigmas[key].append(tooltip_trans_sigma)
 
         base_rot_errs[key].append(base_rot_err)
         base_rot_sigmas[key].append(base_rot_sigma)
@@ -202,27 +224,28 @@ def analyse_base_experiment():
     ax1.set_title("Rotation error")
     ax1.set_ylabel("Deviation (rad)")
     ax1.set_xlabel("Weight (kg)")
+    plt.legend()
 
     # Translation
-    fig1, ax1 = plt.subplots()
-    ax1.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
-    ax1.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
-    ax1.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    ax1.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
-    ax1.yaxis.set_major_locator(ticker.MultipleLocator(1.))
-    ax1.yaxis.set_minor_locator(ticker.MultipleLocator(.2))
+    fig2, ax2 = plt.subplots()
+    ax2.grid(True, which='major', linestyle='-', linewidth=0.5, color='gray')   # Thicker major lines
+    ax2.grid(True, which='minor', linestyle='--', linewidth=0.5, color='lightgray')  # Thinner minor lines
+    ax2.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax2.xaxis.set_minor_locator(ticker.MultipleLocator(0.5))
+    ax2.yaxis.set_major_locator(ticker.MultipleLocator(1.))
+    ax2.yaxis.set_minor_locator(ticker.MultipleLocator(.2))
     i = 0
     for key in weights.keys():
         if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
             continue
-        ax1.errorbar(weights[key], torso_trans_errs[key], yerr=torso_trans_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso translation", capsize=3)
-        ax1.errorbar(weights[key], base_trans_errs[key], yerr=base_trans_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base translation", capsize=3)
+        ax2.errorbar(weights[key], tooltip_trans_errs[key], yerr=tooltip_trans_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : translation projected @ tooltip", capsize=3)
+        # ax2.errorbar(weights[key], torso_trans_errs[key], yerr=torso_trans_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : torso translation", capsize=3)
         plt.draw()
         i+=1
 
-    ax1.set_title("Translation error")
-    ax1.set_ylabel("Deviation (mm)")
-    ax1.set_xlabel("Weight (kg)")
+    ax2.set_title("Translation error")
+    ax2.set_ylabel("Deviation (mm)")
+    ax2.set_xlabel("Weight (kg)")
 
     plt.ioff()  # Turn off interactive mode
     plt.legend()
