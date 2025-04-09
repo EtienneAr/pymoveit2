@@ -122,7 +122,7 @@ class MocapIF:
             for body_name in bodies:
                 info, bodies = self._last_packet.get_6d()
                 pose_obj = copy(bodies[self.body_to_index[body_name]])
-                position = [pose_obj[0].x, pose_obj[0].y, pose_obj[0].y]
+                position = [pose_obj[0].x, pose_obj[0].y, pose_obj[0].z]
                 matrix = pose_obj[1].matrix
                 poses.append([position, matrix])
         self._packet_mutex.release()
