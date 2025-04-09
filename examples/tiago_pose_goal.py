@@ -167,6 +167,9 @@ class Experiment:
         quat_xyzw = [0.0, 0.707, 0.0, 0.707]
 
         for i, position in enumerate(grid.points):
+            if( ((i+2) % 7) != 0):
+                continue
+            print(i)
             input("Press enter to go to next point...")
             # Go to position
             self.go_to(position, quat_xyzw, execute=True, debug_id = i)
@@ -189,8 +192,8 @@ def main():
     executor_thread.start()
     node.create_rate(1.0).sleep()
 
-    # experiment.run()
-    experiment.run_charge(31)
+    experiment.run()
+    # experiment.run_charge(12)
 
     rclpy.shutdown()
     executor_thread.join()
