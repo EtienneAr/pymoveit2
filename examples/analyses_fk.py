@@ -40,26 +40,45 @@ def load_pickle(file_path):
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
+def visualize_transformations(*transformations):
+    """Visualizes transformations in 3D space."""
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    for transform_list in transformations:
+        ax.scatter([t_a.translation[0] for t_a in transform_list],
+                [t_a.translation[1] for t_a in transform_list],
+                [t_a.translation[2] for t_a in transform_list])
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.legend()
+    plt.show()
+
 def extract_all_transforms():
     # Extract transformations for each file and each time step
-    mocap_shoulder_M_tool_list = []
+    mocap_world_M_tool_list = []
+    mocap_world_M_shoulder_list = []
     fk_base_M_tool_list = []
     for file_nb in range(38):
         file_path = os.path.join("/home/earlaud/exchange/measures/2025-04-02_17-13-45", f"{file_nb}.pkl")
         data = load_pickle(file_path)
         for j in range(len(data['mocap_tool_rotmats'])):
-            world_M_tool_mocap = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][j]), [3,3]), np.array(data['mocap_tool_positions'][j]))
+            world_M_tool = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][j]), [3,3]), np.array(data['mocap_tool_positions'][j]))
+            world_M_tool.translation[2] = 0.
+
             world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][j]), [3,3]), np.array(data['mocap_shoulder_positions'][j]))
+            world_M_shoulder.translation[2] = 0.
+
             base_M_tool_tf = pin.XYZQUATToSE3(np.array(data['tf_positions'][j] + data['tf_orientations'][j]))
             base_M_tool_tf.translation *= 1000.
 
-            # Compute mocap (tool -> shoulder)
-            shoulder_M_tool_mocap = world_M_shoulder.inverse() * world_M_tool_mocap
-
-            mocap_shoulder_M_tool_list.append(shoulder_M_tool_mocap)
+            mocap_world_M_tool_list.append(world_M_tool)
+            mocap_world_M_shoulder_list.append(world_M_shoulder)
             fk_base_M_tool_list.append(base_M_tool_tf)
 
-    return mocap_shoulder_M_tool_list, fk_base_M_tool_list
+    return mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list
 
 def compute_base_M_shoulder(shoulder_M_tool_list, base_M_tool_list):
     # Init with plausible guess
@@ -81,22 +100,7 @@ def compute_base_M_shoulder(shoulder_M_tool_list, base_M_tool_list):
 def analyse_4x4x4_experiment():
     np.set_printoptions(formatter={'float': lambda x: f"{x:.0e}"})
 
-    mocap_shoulder_M_tool_list, fk_base_M_tool_list = extract_all_transforms()
-
-    # Guess the orientation of the testbench in the mocap frame
-    guess_base_M_shoulder = compute_base_M_shoulder(mocap_shoulder_M_tool_list, fk_base_M_tool_list)
-
-    # Compute avg / variance of error
-    mocap_tool_M_fk_tool_list = []
-    for mocap_shoulder_M_tool, fk_base_M_tool in zip(mocap_shoulder_M_tool_list, fk_base_M_tool_list):
-        mocap_tool_M_fk_tool = mocap_shoulder_M_tool.inverse() * guess_base_M_shoulder.inverse() * fk_base_M_tool
-        mocap_tool_M_fk_tool_list.append(mocap_tool_M_fk_tool)
-
-    mocap_tool_M_fk_tool_avg = compute_barycenter(mocap_tool_M_fk_tool_list)
-    mocap_tool_M_fk_tool_variance = compute_covariance(mocap_tool_M_fk_tool_avg, mocap_tool_M_fk_tool_list)
-
-    print(mocap_tool_M_fk_tool_avg)
-    print(np.sqrt(np.linalg.norm(mocap_tool_M_fk_tool_variance[3:,3:])))
+    mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list = extract_all_transforms()
 
 if __name__ == "__main__":
     analyse_4x4x4_experiment()
