@@ -5,6 +5,7 @@ from copy import deepcopy
 import pinocchio as pin
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from scipy.optimize import minimize
 
 def compute_barycenter(pose_list, fp_iter=100, callback=None):
     """
@@ -67,6 +68,8 @@ def extract_all_transforms():
         for j in range(len(data['mocap_tool_rotmats'])):
             world_M_tool = pin.SE3(np.reshape(np.array(data['mocap_tool_rotmats'][j]), [3,3]), np.array(data['mocap_tool_positions'][j]))
             world_M_tool.translation[2] = 0.
+            tool_correction = pin.XYZQUATToSE3(np.array([0,0,0] + [ 0.5, -0.5, 0.5, 0.5 ]))
+            world_M_tool = world_M_tool * tool_correction
 
             world_M_shoulder = pin.SE3(np.reshape(np.array(data['mocap_shoulder_rotmats'][j]), [3,3]), np.array(data['mocap_shoulder_positions'][j]))
             world_M_shoulder.translation[2] = 0.
@@ -80,27 +83,62 @@ def extract_all_transforms():
 
     return mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list
 
-def compute_base_M_shoulder(shoulder_M_tool_list, base_M_tool_list):
-    # Init with plausible guess
-    guess_base_M_shoulder = base_M_tool_list[-1] * shoulder_M_tool_list[-1].inverse()
+def compute_shoulder_M_base_bruteforce(world_M_shoulder_list, world_M_tool_list, base_M_tool_list, initial_guess):
+    def guess_distance(xyz_rpy_alpha, display = False):
+        shoulder_M_base_guess = pin.exp(np.array(xyz_rpy_alpha[:6]))
 
-    for i in range(100):
-        log_avg = np.zeros(6)
-        log_avg_cnt = 0
-        for shoulder_M_tool, base_M_tool in zip(shoulder_M_tool_list, base_M_tool_list):
-            M_error = base_M_tool * shoulder_M_tool.inverse() * guess_base_M_shoulder.inverse()
-            log_avg += pin.log(M_error).np
-            log_avg_cnt += 1
-        log_avg /= float(log_avg_cnt)
-        print(log_avg)
-        guess_base_M_shoulder =  pin.exp(log_avg) * guess_base_M_shoulder
+        # Compute all the individual errors.
+        errs = []
+        world_M_tool_pred_list = []
+        for world_M_shoulder, world_M_tool, base_M_tool in zip(world_M_shoulder_list, world_M_tool_list, base_M_tool_list):
+            world_M_shoulder.translation[2] = xyz_rpy_alpha[6]
+            world_M_tool_pred = world_M_shoulder * shoulder_M_base_guess * base_M_tool
 
-    return guess_base_M_shoulder
+            if(display):
+                world_M_tool_pred.translation[2] = 0.
+                world_M_tool_pred_list.append(world_M_tool_pred)
+
+            err_trans = np.array([ world_M_tool.translation[0] - world_M_tool_pred.translation[0]
+                                 , world_M_tool.translation[1] - world_M_tool_pred.translation[1]])
+
+            err_rot = pin.log3((world_M_tool * world_M_tool_pred.inverse()).rotation)
+
+            err = np.linalg.norm(np.concatenate((err_trans, err_rot)))
+
+            errs.append(err)
+
+        if(display):
+            visualize_transformations(world_M_tool_list, world_M_tool_pred_list)
+
+        return np.linalg.norm(errs)
+
+    optim_res = minimize(guess_distance, initial_guess, method="BFGS")
+    print(optim_res)
+    guess_distance(optim_res.x, display=True)
+
+def compute_world_M_base_inexact(world_M_shoulder_list, world_M_tool_list, base_M_tool_list):
+    world_M_base_list = []
+    for world_M_tool, base_M_tool in zip(world_M_tool_list, base_M_tool_list):
+        world_M_base = world_M_tool * base_M_tool.inverse()
+        world_M_base_list.append(world_M_base)
+
+    w_M_b = compute_barycenter(world_M_base_list)
+
+    # visualize_transformations(world_M_tool_list, [ w_M_b * base_M_tool for base_M_tool in base_M_tool_list])
+
+    return w_M_b
 
 def analyse_4x4x4_experiment():
     np.set_printoptions(formatter={'float': lambda x: f"{x:.0e}"})
 
     mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list = extract_all_transforms()
+
+    w_M_b = compute_world_M_base_inexact(mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list)
+
+    s_M_b = mocap_world_M_shoulder_list[0].inverse() * w_M_b
+    initial_guess = pin.log(s_M_b).np.tolist() + [0.]
+
+    compute_shoulder_M_base_bruteforce(mocap_world_M_shoulder_list, mocap_world_M_tool_list, fk_base_M_tool_list, initial_guess)
 
 if __name__ == "__main__":
     analyse_4x4x4_experiment()
