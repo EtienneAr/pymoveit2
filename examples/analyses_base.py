@@ -105,7 +105,7 @@ def compute_transforms_avg_from_file(file_path):
 
 
 def analyse_base_experiment():
-    meas_avg_list = compute_transforms_avg_from_file("/home/earlaud/exchange/measures/merged_results.csv")
+    meas_avg_list = compute_transforms_avg_from_file("/home/earlaud/exchange/measures/output_merged_thomas_06-06-25.csv")
 
     key_field = "folder"
 
@@ -166,8 +166,11 @@ def analyse_base_experiment():
         # torso_trans_err = torso_delta_pose.translation[2]
         # torso_trans_sigma = np.sqrt(meas['torso_variance'][5,5])
 
-        if key == "homeboth":
+        if key == "homeboth" or key == "home":
             torso_m_tooltip = pin.XYZQUATToSE3(np.array([100.,0,200., 0,0,0,1]))
+        elif key.startswith("extended-side"):
+            print("a")
+            torso_m_tooltip = pin.XYZQUATToSE3(np.array([0.,1000.,0., 0,0,0,1]))
         else:
             torso_m_tooltip = pin.XYZQUATToSE3(np.array([1000.,0.,0., 0,0,0,1]))
         tooltip_delta_pose = torso_m_tooltip.inverse() * torso_delta_pose * torso_m_tooltip
@@ -214,8 +217,8 @@ def analyse_base_experiment():
     ax1.yaxis.set_minor_locator(ticker.MultipleLocator(0.0002))
     i = 0
     for key in weights.keys():
-        if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
-            continue
+        # if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
+        #     continue
         ax1.errorbar(weights[key], torso_rot_errs[key], yerr=torso_rot_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : torso rotation", capsize=3)
         ax1.errorbar(weights[key], base_rot_errs[key], yerr=base_rot_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : base rotation", capsize=3)
         plt.draw()
@@ -236,8 +239,8 @@ def analyse_base_experiment():
     ax2.yaxis.set_minor_locator(ticker.MultipleLocator(.2))
     i = 0
     for key in weights.keys():
-        if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
-            continue
+        # if key != "homeboth" and key != "hightorso" and key != "maxreach-r-a":
+        #     continue
         ax2.errorbar(weights[key], tooltip_trans_errs[key], yerr=tooltip_trans_sigmas[key], fmt='o', color=f"C{i}", label=f"config '{key}' : translation projected @ tooltip", capsize=3)
         # ax2.errorbar(weights[key], torso_trans_errs[key], yerr=torso_trans_sigmas[key], fmt='x', color=f"C{i}", label=f"config '{key}' : torso translation", capsize=3)
         plt.draw()

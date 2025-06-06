@@ -3,9 +3,9 @@ import csv
 import re
 from pathlib import Path
 
-input_dir = "/media/earlaud/BIGGYPRINTY/torso-stiff-v2"  # change this to your folder
-output_csv = "output.csv"
-frequency = 100  # default fallback if not found
+input_dir = "/media/earlaud/BIGGYPRINTY/torso-stiff-v2"
+output_csv = "/home/earlaud/exchange/measures/output_merged_thomas_06-06-25.csv"
+frequency = 100  # fallback
 
 header = [
     "Frame", "Time", "empty 0",
@@ -26,6 +26,15 @@ def parse_filename(filename):
         right_w = re.search(r"(\d+)R", name_parts[2])
         return pose_id, int(left_w.group(1)) if left_w else 0, int(right_w.group(1)) if right_w else 0
     return "unknown", 0, 0
+
+def find_body_indices(header_line, target_bodies):
+    indices = {}
+    fields = header_line.strip().split("\t")
+    for i, token in enumerate(fields):
+        for body in target_bodies:
+            if token.strip() == f"{body} X":
+                indices[body] = i
+    return indices
 
 def extract_data(tsv_path):
     rows = []
@@ -48,30 +57,32 @@ def extract_data(tsv_path):
             except:
                 pass
 
-    # Find the starting point of numerical data
-    data_start_index = 0
+    # Find header line and data start
+    header_line_index = None
     for i, line in enumerate(lines):
-        if re.match(r'^\s*\t*-?\d+\.\d+', line):
-            data_start_index = i
+        if "X" in line and "base" in line:
+            header_line_index = i
             break
 
-    # Parse rows
+    body_names = ["base", "Torso"]  # adjust "tool_link" as "shoulder"
+    body_index_map = find_body_indices(lines[header_line_index], body_names)
+
+    # Data starts right after the header line
+    data_lines = lines[header_line_index + 1:]
     frame_idx = 1
-    for i in range(data_start_index, len(lines)):
-        line = lines[i].strip()
-        if not line:
+
+    for line in data_lines:
+        parts = line.strip().split("\t")
+        if len(parts) < 5:
             continue
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
+
         time = (frame_idx - 1) / frequency
-        print(parts)
-        exit(0)
-        try:
-            base_data = parts[3:3+18]
-            shoulder_data = parts[21:21+18]
-        except IndexError:
-            continue
+
+        base_start = body_index_map["base"]
+        base_data = parts[base_start:base_start+16]
+
+        shoulder_start = body_index_map["Torso"]
+        shoulder_data = parts[shoulder_start:shoulder_start+16]
 
         folder_name = tsv_path.parent.name
         pose_id, left_w, right_w = parse_filename(tsv_path)
@@ -79,7 +90,7 @@ def extract_data(tsv_path):
         row = [frame_idx, f"{time:.2f}", ""] + \
               base_data + [""] + \
               shoulder_data + [""] + \
-              [folder_name, tsv_path.name, pose_id, 0, 0, left_w, right_w]
+              [pose_id, tsv_path.name, pose_id, 0, 0, left_w, right_w]
         rows.append(row)
         frame_idx += 1
 
